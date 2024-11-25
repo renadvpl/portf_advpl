@@ -1,0 +1,165 @@
+//Bibliotecas
+#Include "TOTVS.ch"
+#Include "TopConn.ch"
+ 
+//Posições do Array
+Static nPosFilial := 1 //Coluna A no Excel (Filial)
+Static nPosMatric := 2 //Coluna B no Excel (Matrícula)
+Static nPosIniPer := 3 //Coluna C no Excel (Início Período Aquisitivo)
+Static nPosFimPer := 4 //Coluna D no Excel (Fim Período Aquisitivo)
+Static nPosIniFer := 5 //Coluna E no Excel (Data de início da 1ª Férias)
+Static nPosDiasFe := 6 //Coluna F no Excel (Dias das 1ª Férias)
+Static nPosIn2Fer := 7 //Coluna G no Excel (Data de início da 2ª Férias)
+Static nPosDia2Fe := 8 //Coluna H no Excel (Dias das 2ª Férias)
+ 
+/*%%%%%%%%%% {Protheus.doc} IMPRGFER %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%   Função para importar datas e dias de férias dos funcionários via CSV             %%
+%%   @author Renato Silva                                                             %%
+%%   @since 27/09/2022                                                                %%
+%%   @version 1.0                                                                     %%
+%%   @type function                                                                   %%
+%%   @see https://tdn.totvs.com/display/public/framework/FWFileReader                 %%
+%%                                                                                    %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+ 
+User Function ImPrgFer()
+
+    Local aArea     := GetArea()
+    Local tmp       := GetTempPath()
+    Private cArqOri := ""
+ 
+    //Mostra o prompt para selecionar arquivos
+    cArqOri := tFileDialog( "CSV files (*.csv) ", 'Seleção de Arquivos', , tmp, .F., GETF_MULTISELECT)
+    
+    //Se tiver o arquivo de origem
+    If !Empty(cArqOri)
+         
+        //Somente se existir o arquivo e for com a extensão CSV
+        If File(cArqOri) .and. Upper(SubStr(cArqOri, RAt('.', cArqOri) + 1, 3)) == 'CSV'
+            Processa({|| fImporta() }, "Importando os dados...")
+        Else
+            FWAlertInfo("Arquivo e/ou extensão inválida!", "ATENÇÃO")
+        EndIf
+
+    EndIf
+     
+    RestArea(aArea)
+
+Return
+ 
+/*------------------------------------------------------------------------------------------*
+ | Func:  fImporta                                                                          |
+ | Desc:  Função que importa os dados                                                       |
+ *------------------------------------------------------------------------------------------*/
+ 
+Static Function fImporta()
+
+    Local aArea      := GetArea()
+    Local cArqLog    := "ImpCSV_" + DtoS(Date()) + "_" + StrTran(Time(), ':', '-') + ".log"
+    Local oArquivo   as object
+    Local nTotLinhas := 0
+    Local nLinhaAtu  := 0
+    Local aLinhas    := {}
+    Local cLinAtu    := ""
+    Local cFilAtu    := ""
+    Local cMatric    := ""
+    Local cIniPer    := ""
+    Local cFimPer    := ""
+    Local cDataIni   := ""
+    Local cDiasIni   := ""
+    Local cDat2Ini   := ""
+    Local cDia2Ini   := ""
+    Private cDirLog  := GetTempPath() + "x_ImportaFerias\"
+    Private cLog     := ""
+     
+    //Se a pasta de log não existir, cria ela
+    If !ExistDir(cDirLog)
+        MakeDir(cDirLog)
+    EndIf
+ 
+    //Instanciando a classe FWFileReader e definindo o arquivo a ser lido
+    oArquivo := FWFileReader():New(cArqOri)
+     
+    //Se o arquivo pode ser aberto
+    If (oArquivo:Open())
+ 
+        //Se não for fim do arquivo
+        If !(oArquivo:EoF())
+ 
+            //Definindo o tamanho da régua
+            aLinhas := oArquivo:GetAllLines()
+            nTotLinhas := Len(aLinhas)
+            ProcRegua(nTotLinhas)
+             
+            //Método GoTop não funciona (dependendo da versão da LIB), deve fechar e abrir novamente o arquivo
+            oArquivo:Close()
+            oArquivo := FWFileReader():New(cArqOri)
+            oArquivo:Open()
+ 
+            //Enquanto tiver linhas
+            While (oArquivo:HasLine())
+ 
+                //Incrementa na tela a mensagem
+                nLinhaAtu++
+                IncProc("Analisando a linha " + cValToChar(nLinhaAtu) + " de " + cValToChar(nTotLinhas) + "...")
+
+                //Pegando a linha atual e transformando em array
+                cLinAtu := oArquivo:GetLine()
+                aLinhas := StrTokArr(cLinAtu, ";")
+                
+                If !("filial" $ Lower(cLinAtu))
+
+                    cFilAtu  := aLinhas[nPosFilial]
+                    cMatric  := aLinhas[nPosMatric]
+                    cIniPer  := aLinhas[nPosIniPer]
+                    cFimPer  := aLinhas[nPosFimPer]
+                    cDataIni := aLinhas[nPosIniFer]
+                    cDiasIni := aLinhas[nPosDiasFe]
+                    cDat2Ini := aLinhas[nPosIn2Fer]
+                    cDia2Ini := aLinhas[nPosDia2Fe]
+                    
+                    dbSelectArea('SRF')
+                    SRF->(DbSetOrder(1)) // Filial + Matrícula + Data Início Per.Aquis. + Verba
+    
+                    //Se conseguir posicionar na matrícula
+                    If SRF->(dbSeek(cFilAtu + cMatric + DtoS(CtoD(cIniPer))))
+                        cLog += "+ Linha" + cValToChar(nLinhaAtu) + ", registro da matrícula [" + cFilAtu +"-"+ cMatric + "] processado."+ CRLF
+
+                        //Realiza a inserção/alteração das datas programadas de férias da matrícula.
+                        RecLock('SRF', .F.)
+                            SRF->RF_DATAINI := CtoD(cDataIni)
+                            SRF->RF_DFEPRO1 :=  Val(cDiasIni)
+                            SRF->RF_DATINI2 := CtoD(cDat2Ini)
+                            SRF->RF_DFEPRO2 :=  Val(cDia2Ini)
+                        SRF->(MsUnlock())
+
+                    Else
+                        cLog += "- Linha" + cValToChar(nLinhaAtu) + ", registro da matrícula [" + cFilAtu + cMatric + "] não encontrados no Protheus;" + CRLF
+                    EndIf
+                     
+                Else
+                    cLog += "- Linha" + cValToChar(nLinhaAtu) + ", registro não processado - cabeçalho;" + CRLF
+                EndIf
+                 
+            EndDo
+ 
+            //Se tiver log, mostra ele
+            If !Empty(cLog)
+                cLog := "Processamento finalizado. Abaixo, as mensagens de log: " + CRLF + cLog
+                MemoWrite(cDirLog + cArqLog, cLog)
+                ShellExecute("OPEN", cArqLog, "", cDirLog, 1)
+            EndIf
+ 
+        Else
+            FWAlertError("O arquivo não tem conteúdo!", "Atenção")
+        EndIf
+ 
+        //Fecha o arquivo
+        oArquivo:Close()
+    Else
+        FWAlertError("O arquivo não pode ser aberto!", "Atenção")
+    EndIf
+ 
+    RestArea(aArea)
+
+Return

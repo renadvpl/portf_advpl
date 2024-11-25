@@ -1,0 +1,23 @@
+#include 'Protheus.ch'
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} A010TOK ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Ponto-de-Entrada para impedir a inclusão de produtos com            ßß
+ßß                determinados grupos.                                                ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       25/10/2020                                                          ßß
+ßß   @see         https://tdn.totvs.com/pages/releaseview.action?pageId=6087477       ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+User Function A010TOK()
+    local lRetorno     := .T.
+    local cGruposNPerm := '0010/0011/0012'
+
+    if Inclui .and. (M->B1_GRUPO $ cGruposNPerm)
+        lRetorno := .F.
+        fwAlertInfo("Inclusão não permitida devido ao código do grupo "+;
+            M->B1_GRUPO+"! "+Chr(10)+Chr(13)+"Os grupos devem ser diferentes de "+;
+            cGruposNPerm,"ATENÇÃO")
+    endif
+
+Return lRetorno

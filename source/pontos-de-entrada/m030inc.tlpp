@@ -1,0 +1,29 @@
+//Bibliotecas
+#INCLUDE "totvs.ch"
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} M030INC ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Gravação do código do usuário que incluiu o cliente (Ponto-Entrada) ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       10/03/2019                                                          ßß
+ßß   @see         https://tdn.totvs.com/pages/releaseview.action?pageId=6784136       ßß
+ßß   @obs         Incluir campo A1_XUSRINC no Configurador                            ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+User Function M030INC()
+
+    local aArea := fwGetArea()
+    local cNomeCli := iif(Empty(M->A1_NOME),"",M->A1_NOME)
+
+    if PARAMIXB <> 3
+        fwAlertSuccess("Você acabou de inserir o cliente "+CRLF+cNomeCli+" com sucesso.")
+
+        Reclock("SA1",.F.)
+            SA1->A1_XUSRINC := RetCodUsr() // Codigo do usuario
+        SA1->(msUnlock())
+    endif
+
+    fwRestArea(aArea)
+
+Return

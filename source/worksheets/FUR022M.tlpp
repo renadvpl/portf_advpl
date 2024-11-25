@@ -1,0 +1,209 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} FUR022M ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description                                                                     ßß
+ßß   Relatório de Relacionamento dos Funcionários aos Ambientes e às Tarefas          ßß
+ßß   @author Renato Silva                                                             ßß
+ßß   @since 12/06/2023                                                                ßß
+ßß   @version 1.0                                                                     ßß
+ßß   @type function                                                                   ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function FUR022M()
+
+    Local aPergs    := {}
+    Local cParam    := "Relacionamento dos Funcionários aos Ambientes e às Tarefas"
+	Private aRet    := {}
+    Private oSay    as OBJECT
+
+    aAdd(aPergs,{1,"Filial De"         ,Space(tamSx3("RA_FILIAL")[1])	        ,  ,""            ,"XM0","",0,.F.})
+    aAdd(aPergs,{1,"Filial Até"        ,Replicate('Z',tamSx3("RA_FILIAL")[1])	,  ,"NaoVazio()"  ,"XM0","",0,.F.})
+    aAdd(aPergs,{1,"Matrícula De"      ,Space(tamSx3("RA_MAT")[1])		        ,  ,""            ,"SRA","",0,.F.})
+    aAdd(aPergs,{1,"Matrícula Até"     ,Replicate('Z',tamSx3("RA_MAT")[1])		,  ,"NaoVazio()"  ,"SRA","",0,.F.})
+    aAdd(aPergs,{1,"C.Custo De"        ,Space(tamSx3("RA_CC")[1])		        ,  ,""            ,"CTT","",0,.F.})
+    aAdd(aPergs,{1,"C.Custo Até"       ,Replicate('Z',tamSx3("RA_CC")[1])		,  ,"NaoVazio()"  ,"CTT","",0,.F.})
+    aAdd(aPergs,{1,"Situação"      	   ," ADFT"	  					            ,  ,"fSituacao()" ,"","",0,.F.})
+    aAdd(aPergs,{1,"Categoria"         ,"ACDEGHIJMPST*"	  					    ,  ,"fCategoria()","","",0,.F.})
+
+    If Parambox(aPergs , cParam , aRet,,,,,,,,.F.,.F.)
+        FwMsgRun(,{|oSay| GeraDados() },"Processando os dados","Aguarde o fim da execução...")
+    Endif
+
+Return NIL
+
+
+
+Static Function GERADADOS()
+
+    Local cTabela := GetNextAlias()
+
+    Local cFilDe   := aRet[01]
+    Local cFilAte  := aRet[02]
+    Local cMatDe   := aRet[03]
+    Local cMatAte  := aRet[04]
+    Local cCCtDe   := aRet[05]
+    Local cCCtAte  := aRet[06]
+    Local cSituac  := aRet[07]
+    Local cCateg   := aRet[08]
+
+    Private aDados := {}
+
+    cSituac := Upper("%" + fSqlIN( cSituac, 1 ) + "%")
+    cCateg  := Upper("%" + fSqlIN( cCateg, 1 ) + "%")
+
+    BeginSQL Alias cTabela
+
+        SELECT
+            RA_FILIAL,
+            RA_MAT,
+            RA_NOME,
+            RA_CIC,
+            RA_CC,
+            CTT_DESC01,
+            RA_ADMISSA,
+            RA_DEMISSA,
+            RA_CODFUNC,
+            RJ_DESC,
+            TOU_CODAMB,
+            TNE_NOME,
+            TN6_CODTAR,
+            TN5_NOMTAR,
+            TN6_DTINIC,
+            TN6_DTTERM
+        FROM
+            %Table:SRA% SRA
+
+            INNER JOIN %Table:CTT% CTT
+                on SRA.RA_CC = CTT.CTT_CUSTO
+                and CTT.%notdel%
+            
+            INNER JOIN %Table:SRJ% SRJ
+                on SRA.RA_CODFUNC = SRJ.RJ_FUNCAO
+                and SRJ.%notdel%
+
+            LEFT JOIN %Table:TOU% TOU
+		        on SRA.RA_FILIAL = TOU.TOU_FILIAL
+		        and SRA.RA_MAT = TOU.TOU_MAT
+		        and TOU.%notdel%
+            
+            LEFT JOIN %Table:TNE% TNE
+		        on TOU.TOU_CODAMB = TNE.TNE_CODAMB
+		        and TNE.%notdel%
+
+            LEFT JOIN %Table:TN6% TN6
+                on SRA.RA_MAT=TN6.TN6_MAT
+                and SRA.RA_FILIAL=TN6.TN6_FILIAL
+                and TN6.%notdel%
+
+            LEFT JOIN %Table:TN5% TN5
+		        on TN6.TN6_CODTAR=TN5.TN5_CODTAR
+		        and TN5.%notdel%
+        WHERE
+	        SRA.%notdel%
+            and SRA.RA_FILIAL between %exp:cFilDe% and %exp:cFilAte%
+            and SRA.RA_MAT    between %exp:cMatDe% and %exp:cMatAte%
+            and SRA.RA_CC     between %exp:cCCtDe% and %exp:cCCtAte%
+            and SRA.RA_SITFOLH in ( %exp:cSituac%)
+            and SRA.RA_CATFUNC in ( %exp:cCateg% )
+        ORDER BY
+            SRA.RA_MAT
+
+    EndSQL
+
+	(cTabela)->(dbGoTop())
+
+    While !(cTabela)->(EoF())
+        (cTabela)->(aAdd(aDados,{;
+            RA_FILIAL , RA_MAT , RA_NOME, RA_CIC, RA_CC, CTT_DESC01 ,;
+            StoD(RA_ADMISSA), StoD(RA_DEMISSA), RA_CODFUNC, RJ_DESC , TOU_CODAMB , TNE_NOME,;
+            TN6_CODTAR , TN5_NOMTAR, StoD(TN6_DTINIC), StoD(TN6_DTTERM) }))
+        (cTabela)->(dbSkip())
+    EndDo
+
+    (cTabela)->(dbCloseArea())
+
+    FWMsgRun(,{|oSay| GeraExcel(aDados,oSay)}, "Gerando a planilha", "Aguarde o final do processamento")
+
+Return NIL
+
+
+Static Function GERAEXCEL(aDados,oSay)
+
+    Local oFWMSEx    := FWMsExcelEx():New()
+    Local oFWMSExApp as object
+    Local cPasta     := "Func_x_Amb_x_Tar"
+    Local cPlanilha  := "RELACIONAMENTO DOS FUNCIONÁRIOS AOS AMBIENTES E ÀS TAREFAS - "+DtoC(dDataBase)+""
+    Local cArquivo   := GetTempPath()+'fur022m_'+DtoS(dDataBase)+'.xml'
+    Local nCount     := 0
+
+    If Len(aDados) <= 0
+        FWAlertWarning("Não existem dados para os parâmetros informados.", "ATENÇÂO")
+    Else
+        If !ApOleClient("MSExcel")
+            FWAlertWarning("MS Excel não está instalado.", "Contate o setor de TI")
+            return
+        EndIf
+
+        oSay:SetText("Criando estrutura da planilha MS Excel")
+
+        oFWMSEx:AddWorkSheet(cPasta)
+
+            oFWMSEx:AddTable(cPasta,cPlanilha)
+
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Filial"		   ,1,1)
+	            oFWMSEx:AddColumn(cPasta,cPlanilha,"Matrícula"	   ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Nome Completo" ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"C.P.F."        ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"C.Custo"       ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Desc.CC"       ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Admissão"      ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Demissão"      ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Função"        ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Descr. Função" ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Amb. Físico"   ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Nome Ambiente" ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Tarefa"	       ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Descr. Tarefa" ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Início Tar."   ,1,1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Term. Tar."    ,1,1)
+
+                    oFWMSEx:SetCelBold(.T.)
+                    oFWMSEx:SetFont('Arial')
+                    oFWMSEx:SetFontSize(10)
+                    oFWMSEx:SetFrGeneralColor("#000000")
+                    oFWMSEx:SetBgGeneralColor("#FFFFFF")
+                    oFWMsEx:SetTitleFrColor("#FFFFFF")
+                    oFWMsEx:SetTitleBgColor("#000000")
+        
+            oSay:SetText("Adicionando dados para a planilha.")
+
+            For nCount := 1 To Len(aDados)
+                oSay:SetText("Adicionando a linha "+cValToChar(nCount)+" de "+cValToChar(Len(aDados)))
+                oFWMSEx:AddRow(cPasta,cPlanilha,;
+                {;
+                    aDados[nCount, 1], aDados[nCount, 2], aDados[nCount, 3], aDados[nCount, 4],;
+                    aDados[nCount, 5], aDados[nCount, 6], aDados[nCount, 7], aDados[nCount, 8],;
+                    aDados[nCount, 9], aDados[nCount,10], aDados[nCount,11], aDados[nCount,12],;
+                    aDados[nCount,13], aDados[nCount,14], aDados[nCount,15], aDados[nCount,16];
+                })
+
+            Next nCount
+
+            If !Empty(oFWMSEx:aWorkSheet)
+
+                oSay:SetText("Abrindo o arquivo gerado...")
+                oFWMSEx:Activate()
+                oFWMSEx:GetXMLFile(cArquivo)
+                
+                oFWMSExApp := MsExcel():New()
+                oFWMSExApp:WorkBooks:Open(cArquivo)
+                oFWMSExApp:SetVisible(.T.)
+                oFWMSExApp:Destroy()
+
+            Endif
+    Endif
+
+
+Return NIL
+

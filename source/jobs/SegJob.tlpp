@@ -1,0 +1,15 @@
+#include "protheus.ch"
+
+/*/{Protheus.doc} User Function MeuJob
+    Segundo Job
+    @type Function
+    @author Renato
+    @since 23/06/2021
+    @version 1.0
+    /*/
+User Function SegJob(cPar1,cPar2)
+
+    FWLogMsg("INFO",,"SEGJOB",,,,cPar1,,,) // Podemos utilizar ConOut
+    FWLogMsg("INFO",,"SEGJOB",,,,cPar2,,,)
+    
+Return

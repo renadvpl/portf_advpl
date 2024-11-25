@@ -1,0 +1,110 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+
+//Declaração da namespace
+Namespace atualizacaoCompleta
+
+//Constantes
+#Define CRLF Chr(13) + Chr(10)
+
+/*
+ßßßßßßßßßßßßßßßßßßß  {Protheus.doc} WSGRPPRODPUTUN ßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Alterar um grupo de produto conforme a estrutura         ßß
+ßß   @author      Renato Silva                                             ßß
+ßß   @since       26/03/2024                                               ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+@Put("WsGrupoProdNov/atualizacao/completa/unico/")
+User Function wsGrpProdPutUn()
+    Local jResponse         := JsonObject():New()     As Json
+    Local jBody                                       As Json
+    Local cAliasWS          := 'SBM'                  As Character
+    Local aDados            := {}                     As Array
+    Local nLinha            := 0                      As Numeric
+    Local cDirLog           := '\x_logs\'             As Character
+    Local cArqLog           := ''                     As Character
+    Local cErrorLog         := ''                     As Character
+    Local aLogAuto          := {}                     As Array
+    Local cBody             := oRest:getBodyRequest() As Character
+    Private lMsErroAuto     := .F.                    As Logical
+    Private lMsHelpAuto     := .T.                    As Logical
+    Private lAutoErrNoFile  := .T.                    As Logical
+
+    //Prepara o ambiente caso ele não esteja preparado
+    if Select("SX2") <= 0
+		RPCSetEnv('01','01', 'Administrador', '')
+    endif
+
+    //Se veio um body
+    If ! Empty(cBody)
+        jBody := JsonObject():New()
+        jBody:fromJson(cBody)
+    
+        If jBody != Nil .And. ! Empty(jBody:GetJsonObject('grupo'))
+            dbSelectArea( cAliasWS )
+            (cAliasWS)->( dbSetOrder(1) )
+
+            If ! (cAliasWS)->(msSeek(FWxFilial(cAliasWS) + jBody:getJsonObject('grupo') ))
+                oRest:setStatusCode(500)
+                jResponse['errorId']  := 'ALT004'
+                jResponse['error']    := 'Grupo nao encontrado'
+                jResponse['solution'] := 'Codigo do Grupo nao encontrado na tabela ' + cAliasWS + ', portanto nao pode ser alterado'
+            Else
+                aAdd(aDados, {'BM_GRUPO',   jBody:GetJsonObject('grupo')  ,   Nil})
+                If ! Empty(jBody:GetJsonObject('desc'))
+                    aAdd(aDados, {'BM_DESC',    jBody:GetJsonObject('desc')   ,   Nil})
+                EndIf
+                If ! Empty(jBody:GetJsonObject('proori'))
+                    aAdd(aDados, {'BM_PROORI',  jBody:GetJsonObject('proori') ,   Nil})
+                EndIf
+                If ! Empty(jBody:GetJsonObject('status'))
+                    aAdd(aDados, {'BM_STATUS',  jBody:GetJsonObject('status') ,   Nil})
+                EndIf
+
+                MsExecAuto({|x, y| MATA035(x, y)}, aDados, 4)
+
+                If lMsErroAuto
+                    cErrorLog   := ''
+                    aLogAuto    := GetAutoGrLog()
+                    For nLinha := 1 To Len(aLogAuto)
+                        cErrorLog += aLogAuto[nLinha] + CRLF
+                    Next nLinha
+
+                    If ! ExistDir(cDirLog)
+                        MakeDir(cDirLog)
+                    EndIf
+
+                    cArqLog := 'SBM_post_' + dToS(Date()) + '_' + StrTran(Time(), ':', '-') + '.log'
+                    MemoWrite(cDirLog + cArqLog, cErrorLog)
+
+                    //Define o retorno para o WebService
+                    oRest:setStatusCode(500)
+                    jResponse['errorId']  := 'ALT002'
+                    jResponse['error']    := 'Erro na alteracao do registro'
+                    jResponse['solution'] := 'Nao foi possivel alterar o registro, foi gerado um arquivo de log em ' + cDirLog + cArqLog + ' '
+
+                //Senão, define o retorno
+                Else
+                    jResponse['note']     := 'Registro alterado com sucesso'
+                EndIf
+            EndIf
+        Else
+            oRest:setStatusCode(500)
+            jResponse['errorId']  := 'ALT003'
+            jResponse['error']    := 'Falha na conversao string para JSON e ou codigo do grupo vazio'
+            jResponse['solution'] := 'Nao foi possivel capturar o Body e transformar em JSON, contate o Administrador ou o codigo do grupo informado esta vazio'
+        EndIf
+    
+    Else
+        oRest:setStatusCode(500)
+        jResponse['errorId']  := 'NOV001'
+        jResponse['error']    := 'Body vazio'
+        jResponse['solution'] := 'Informe o Body da requisicao'
+    EndIf
+  
+    oRest:setKeyHeaderResponse('Content-Type','application/json')
+    oRest:setResponse( jResponse:toJSON() )
+
+Return NIL

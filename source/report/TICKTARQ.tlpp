@@ -1,0 +1,266 @@
+/* Biblioteca de Funcoes */
+#INCLUDE "totvs.ch"
+#INCLUDE "topconn.ch"
+#INCLUDE "tlpp-core.th"
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} TICKTARQ ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description  Geração de arquivo-texto VR/VA - Leiaute Ticket Edenred            ßß
+ßß   @author       Renato Silva                                                       ßß
+ßß   @since        24/07/2024                                                         ßß
+ßß   @email        validararquivo-br@edenred.com                                      ßß
+ßß   @obs          inclusão do campo RGC_XCONTR                                       ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function TICKTARQ()
+	Local aPergs	    := {}             as Array
+	Local cTitulo       := ""             as Character
+	Private nHandle     := 0              as Numeric
+	Private cAliasBenef := GetNextAlias() as Character
+	Private cBuffAR     := ""             as Character
+	Private nSequencia  := 0              as Numeric
+	Private cQuery      := ""             as Character
+
+	cTitulo  := "Gerador Arq Texto TICKET - Vale Refeicao / Alimentação"
+	aAdd(aPergs,{6,"Selecione a pasta:" ,Space(110), "", ,"", 90, .F., ,'C:\',nOR(GETF_LOCALHARD,GETF_RETDIRECTORY)})
+	aAdd(aPergs,{2,"Tipo Beneficio:"    ,      2,       {'Vale Refeição','Vale Alimentação'},   65, ".T.", .F.})
+	aAdd(aPergs,{1,"Filial:"            ,Space(tamSX3("RA_FILIAL")[1])       , ,"NaoVazio()"  ,"XM0","",15,.F.})
+    aAdd(aPergs,{1,"Matrícula De:"      ,Space(tamSX3("RA_MAT")[1])		     , ,""            ,"SRA","",40,.F.})
+    aAdd(aPergs,{1,"Matrícula Até:"     ,Replicate('Z',tamSX3("RA_MAT")[1])	 , ,"NaoVazio()"  ,"SRA","",40,.F.})
+    aAdd(aPergs,{1,"C. de Custo De:"    ,Space(tamSX3("RA_CC")[1])		     , ,""            ,"CTT","",57,.F.})
+    aAdd(aPergs,{1,"C. de Custo Até:"   ,Replicate('Z',tamSX3("RA_CC")[1])	 , ,"NaoVazio()"  ,"CTT","",57,.F.})
+    aAdd(aPergs,{1,"Situações:"         ," ADFT"	  					     , ,"fSituacao()" ,   "","",00,.F.})
+    aAdd(aPergs,{1,"Categorias:"        ,"ACDEGHIJMPST*"	  				 , ,"fCategoria()",   "","",00,.F.})
+	aAdd(aPergs,{1,"Periodo (AAAAMM)"   ,MesAnoAtf(Date())	  		         , ,         ".T.","",  "" ,30,.F.})
+	aAdd(aPergs,{1,"Data do Credito:"   ,Date()                              , ,         ".T.","",".T.",47,.F.})
+
+    If Parambox( aPergs, cTitulo, , , , , , , , ,.F.,.F. )
+	    MV_PAR02 := Val( cValToChar(MV_PAR02) )
+		MV_PAR03 := iif( Empty(MV_PAR03), FWCodFil(), MV_PAR03 )
+        Processa( {|| PRGPEA1A() },"Processando os dados", "Aguarde o fim da execução..." )
+    Endif
+
+Return NIL
+
+
+
+Static Function PRGPEA1A()
+	Local cDirArquivo := MV_PAR01   as Character
+	Local nTipoBenef  := MV_PAR02   as Numeric
+	Local cFilSel     := MV_PAR03   as Character
+	Local cMatricDe   := MV_PAR04   as Character
+	Local cMatricAte  := MV_PAR05   as Character
+	Local cCCustoDe   := MV_PAR06   as Character
+	Local cCCustoAte  := MV_PAR07   as Character
+	Local cSituacoes  := MV_PAR08   as Character
+	Local cCategorias := MV_PAR09   as Character
+	Local cPeriodoBen := MV_PAR10   as Character
+	Local dDtCredito  := MV_PAR11   as Character
+	Local cEmpLocal   := FWCodEmp() as Character
+	Local cFilLocal   := FWCodFil() as Character
+	Local cNContrato  := ""         as Character
+	Local cNomeResp   := ""         as Character
+	Local cTipoBenef  := ""         as Character
+	Local cUsuario    := ""         as Character
+	Local cArqBenef   := ""         as Character
+	Local nTotFunc    := 0          as Integer
+	Local nTotVal     := 0          as Numeric
+
+    cSituacoes  := Upper( fSqlIn( StrTran(cSituacoes,'*','') , 1 ) )
+	cCategorias := Upper( fSqlIn( StrTran(cCategorias,'*',''), 1 ) )
+	cTipoBenef  := iif( nTipoBenef=1, 'R', 'A' )
+	cUsuario    := Upper( UsrRetName( RetCodUsr() ) )
+
+	dbSelectArea("RGC")
+	RGC->( dbSetOrder(1), dbGoTop() )
+
+	if RGC->( dbSeek( FWxFilial('RGC') + cEmpLocal+cFilLocal ) )
+		cCodLoc    := RGC->RGC_KEYLOC
+		cDescLoc   := RGC->RGC_DESLOC
+		cCNPJ      := RGC->RGC_CPFCGC
+		cNomeResp  := RGC->RGC_NMRESP
+		cEndere    := RGC->RGC_ENDER 
+		cNumEnd    := RGC->RGC_NUMERO
+		cBaiLoc    := RGC->RGC_BAIRRO
+		cMunLoc    := RGC->RGC_MUNIC 
+		cUFLoc     := RGC->RGC_ESTADO
+		cCEPLoc    := RGC->RGC_CODPOS
+		cNContrato := RGC->RGC_XCONTR
+	else
+	    FWAlertWarning("Cadastre a empresa e o número de contrato em:<br>Atualizações > Benefícios > Localidades","Falta de Cadastro")
+	Endif
+
+
+	If !Empty( cNContrato )
+
+		nHandle := fCreate(AllTrim(cDirArquivo)+cNContrato+"_ped_v"+lower(cTipoBenef)+"_"+cPeriodoBen+".txt")
+		If nHandle = -1
+			FWAlertError("Falha na criação do arquivo." + Str(fError()))
+		Else
+			cArqBenef := AllTrim(cDirArquivo)+cNContrato+"_ped_v"+lower(cTipoBenef)+"_"+cPeriodoBen+".txt"
+		EndIf
+
+
+        /*
+		===================================================================================================
+		                        REGISTRO HEADER DO ARQUIVO TRE / TAE  
+		=================================================================================================*/
+		cBuffAR := "LSUP5" + PadR(cUsuario,08)         // Fixo + Usuario que gerou o arquivo
+		cBuffAR += Space(11)	                       // Brancos
+		cBuffAR += DtoS(dDatabase)	                   // Data no formato “AAAAMMDD”
+		cBuffAR += StrTran(Time(),':','.')             // Hora no formato “HH.MM.SS”
+		cBuffAR += Space(124)                          //"LAYOUT-16/06/2014" + space(107)
+		cBuffAR += CRLF
+
+		nSequencia += 1
+
+        /*
+		===================================================================================================
+		                        REGISTRO HEADER DO PEDIDO TRE / TAE  
+		=================================================================================================*/
+		cBuffAR += "T"                                 // Fixo
+		cBuffAR += cTipoBenef                          // Alimentação / Refeição
+		cBuffAR += "020"			                   // Fixo + Tipo de Registro
+		cBuffAR += cTipoBenef                          // Alimentação / Refeição
+		cBuffAR += PadR(cNContrato,10)		           // Código de Contrato
+		cBuffAR += PadR(cDescLoc,24)                   // Nome da Empresa
+		cBuffAR += space(6)	                           // Brancos
+		cBuffAR += DtoS(dDatabase)                     // Data do Pedido
+		cBuffAR += DtoS(dDtCredito)                    // Data da Liberação
+		cBuffAR += space(17)	                       // Brancos
+		cBuffAR += SubStr(cPeriodoBen,5,2)             // Mês de Referência
+		cBuffAR += space(19)                           // Brancos
+		cBuffAR += "04"	                               // Tipo de Layout
+		cBuffAR += iif(nTipoBenef=1,'34','33')         // Alimentação / Refeição
+		cBuffAR += space(48)				           // Reservado
+		cBuffAR += "SUP"+ space(3)                     // Origem (Fixo)
+		cBuffAR += cValToChar( StrZero(nSequencia,6) ) // Número seqüencial para cada linha
+		cBuffAR += CRLF
+        
+		nSequencia += 1
+
+        /*
+		===================================================================================================
+		                        HEADER DE UNIDADES DE ENTREGA  
+		=================================================================================================*/
+		cBuffAR += "T"                                 // Fixo
+		cBuffAR += cTipoBenef                          // Alimentação / Refeição
+		cBuffAR += "022"			                   // Fixo + Tipo de Registro
+		cBuffAR += PadR(cDescLoc, 26)                  // Nome da Unidade
+		cBuffAR += PadR(Left(cEndere, 3),4)            // Tipo de logradouro
+		cBuffAR += PadR(SubStr(cEndere,4), 30)         // Logradouro
+		cBuffAR += PadR(cNumEnd, 06)                   // Numero
+		cBuffAR += space(10)                           // Complemento
+		cBuffAR += PadR(cMunLoc, 25)                   // Município
+		cBuffAR += PadR(cBaiLoc, 15)                   // Bairro
+		cBuffAR += PadL(SubStr(cCEPLoc,1,5), 05)       // CEP
+		cBuffAR += PadR(cUFLoc , 02)                   // UF
+		cBuffAR += PadR(cNomeResp, 20)                 // Responsavel pelo recebimento 
+		cBuffAR += PadR(SubStr(cCEPLoc,6,3), 03)       // Complemento do CEP
+		cBuffAR += space(7)                            // Brancos
+		cBuffAR += cValToChar( strZero(nSequencia,6) ) // Número seqüencial para cada linha
+		cBuffAR += CRLF
+
+		fWrite( nHandle, cBuffAR )
+		nSequencia += 1
+
+
+		cQuery := "SELECT R0_FILIAL, R0_MAT, RA_NOME, RA_CIC, RA_NASC, RA_SITFOLH, RA_CATFUNC,"
+		cQuery +=        "RA_CC, R0_TPVALE, R0_VALCAL, R0_PERIOD" + CRLF
+		cQuery += "FROM "+RetSqlName("SR0")+" SR0" + CRLF
+		cQuery += "    INNER JOIN "+RetSqlName("SRA")+" SRA" + CRLF
+		cQuery += "    on R0_FILIAL = RA_FILIAL and R0_MAT = RA_MAT" + CRLF
+		cQuery += "    and SRA.D_E_L_E_T_ = ' '" + CRLF
+		cQuery += "WHERE SR0.D_E_L_E_T_ = ' '" + CRLF
+		cQuery += "	   and R0_TPVALE  = '"+cValToChar(nTipoBenef)+"'" + CRLF
+		cQuery += "	   and R0_VALCAL  > 0" + CRLF
+		cQuery += "	   and RA_SITFOLH in ("+Upper(cSituacoes)+")" + CRLF
+		cQuery += "	   and RA_CATFUNC in ("+Upper(cCategorias)+")" + CRLF
+		cQuery += "	   and RA_CC	  between '"+cCCustoDe+"' and '"+cCCustoAte+"'" + CRLF
+		cQuery += "	   and RA_MAT 	  between '"+cMatricDe+"' and '"+cMatricAte+"'" + CRLF
+		cQuery += "	   and R0_PERIOD  = '"+cPeriodoBen+"'" + CRLF
+		cQuery += "	   and R0_FILIAL  = '"+cFilSel+"'" + CRLF
+		cQuery += "ORDER BY R0_FILIAL, R0_MAT, R0_CODIGO"
+
+		If Select(cAliasBenef) > 0
+			(cAliasBenef)->( dbCloseArea() )
+		Endif
+
+		dbUseArea(.T., "TOPCONN", TcGenQry(,,cQuery), cAliasBenef, .F., .T.)
+		TcSetField( cAliasBenef, "R0_VALCAL" ,"N", 12, 2 )
+		TcSetField( cAliasBenef, "RA_NASC"	 ,"D", 08, 0 )
+		
+		dbSelectArea(cAliasBenef)
+		(cAliasBenef)->( dbGoTop() )
+		ProcRegua( RecCount() )
+
+		While (cAliasBenef)->( !EoF() )
+			IncProc( "Processando a matrícula "+(cAliasBenef)->R0_MAT )
+			/*
+			===================================================================================================
+									REGISTRO DE FUNCIONÁRIOS TRE / TAE  
+			=================================================================================================*/
+			cBuffAR := "T"                                         // Fixo
+			cBuffAR += cTipoBenef              				       // Alimentação / Refeição
+			cBuffAR += "023"			                           // Fixo + Tipo de Registro
+			cBuffAR += PadR( (cAliasBenef)->RA_CC, 26 )            // Código do departamento
+			cBuffAR += StrZero( Val( (cAliasBenef)->R0_MAT ), 12 ) // Matricula do Colaborador
+			cBuffAR += GravaData((cAliasBenef)->RA_NASC,.F.,5)	   // Data de Nascimento DDMMAAAA
+			cBuffAR += space(18)                                   // Brancos
+			cBuffAR += PadR( cDescLoc, 26)                         // Nome da Unidade
+			cBuffAR += "00101"                                     // Fixos
+			cBuffAR += StrZero((cAliasBenef)->R0_VALCAL*100, 9)	   // Valor do beneficio
+			cBuffAR += cTipoBenef                                  // Alimentação / Refeição
+			cBuffAR += "E"							               // Eletronico
+			cBuffAR += PadR( (cAliasBenef)->RA_NOME, 30 )		   // Nome do Funcionario
+			cBuffAR += space(6)						               // Brancos
+			cBuffAR += (cAliasBenef)->RA_CIC				       // CPF
+			cBuffAR += cValToChar( strZero(nSequencia,6) ) + CRLF  // Número seqüencial para cada linha
+
+			fWrite( nHandle, cBuffAR )
+			nSequencia += 1
+            nTotFunc += 1
+			nTotVal += ((cAliasBenef)->R0_VALCAL)*100
+
+			dbSelectArea(cAliasBenef)
+			(cAliasBenef)->( dbSkip() )
+
+		Enddo
+
+		dbSelectArea(cAliasBenef)
+		(cAliasBenef)->( dbCloseArea() )
+
+        /*
+		===================================================================================================
+		                        TRAILLER DO PEDIDO  
+		=================================================================================================*/
+		cBuffAR := "T"                                  // Fixo
+		cBuffAR += cTipoBenef   		                // Alimentação / Refeição
+		cBuffAR += "029"			                    // Fixo + Tipo de Registro
+		cBuffAR += StrZero( nTotFunc,08 )               // Quantidade de funcionários
+		cBuffAR += StrZero( nTotVal ,14 )               // Somatória do valor do pedido
+		cBuffAR += space(131)                           // Brancos
+		cBuffAR += cValToChar( strZero(nSequencia,6) )  // Número seqüencial para cada linha
+		cBuffAR += CRLF
+
+        /*
+		=====================================================================================================
+		                        TRAILLER DO ARQUIVO DO PEDIDO  
+		=====================================================================================================*/
+		cBuffAR += "LSUP9"                      // Fixo
+		cBuffAR += StrZero( 2, 08 )             // Somatório total dos registros HEADERs
+		cBuffAR += StrZero( nSequencia, 08)		// Somatório total dos registros TRAILLERs
+		cBuffAR += StrZero( nTotFunc, 08)	    // Somatório total dos registros, exceto HEADERs e TRAILLERs
+		cBuffAR += space(277) + CRLF            // Brancos
+		
+		fWrite( nHandle, cBuffAR )
+		fClose( nHandle )
+    Else
+	    FWAlertWarning("Preencher o número do contrato com a operadora de benefícios em:<br>Atualizações > Benefícios > Localidades","Falta Nº Contrato")
+	EndIf
+
+	If !Empty( cArqBenef )
+		FWAlertSuccess("Arquivo processado com sucesso em: <br>"+cArqBenef, "Fim de Processo")
+	EndIf
+
+Return NIL

@@ -1,0 +1,12 @@
+#include "protheus.ch"
+
+/*/{Protheus.doc} User Function MeuJob
+    Primeiro Job
+    @type Function
+    @author Renato
+    @since 23/06/2021
+    @version 1.0
+    /*/
+User Function MeuJob()
+    FWLogMsg("INFO",,"MEUJOB",,,,"Meu Job foi executado!",,,)
+Return

@@ -1,0 +1,30 @@
+#INCLUDE 'Protheus.ch'
+#INCLUDE 'tlpp-core.th'
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} MT100LOK ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Ponto de entrada utilizado para validar a linha do documento de     ßß
+ßß                de entrada MTA103. Implementado para tratar e impedir que itens     ßß
+ßß                sejam inclusos com quantidade igual ou maior a 5 e que usem TES     ßß
+ßß                diferente das que estão no parametro ES_ZTESQTD.                    ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       26/10/2020                                                          ßß
+ßß   @see https://tdn.totvs.com/pages/releaseview.action?pageId=6085397               ßß
+ßß   @see https://tdn.totvs.com/pages/viewpage.action?pageId=24346931                 ßß
+ßß   @see https://tdn.totvs.com/pages/viewpage.action?pageId=24347112                 ßß
+ßß   @obs Necessário a inclusão do parâmetro ES_ZTESQTD no Configurador (SX6)         ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function MT100LOK()
+    local lRetorno    := .T. as logical
+    local nAcolsTES   := aScan(aHeader, {|x| AllTrim(x[2]) == "D1_TES"} )
+    local nAcolsQtd   := aScan(aHeader, {|x| AllTrim(x[2]) == "D1_QUANT"} )
+    local cTES        := aCols[n, nAcolsTES] as character
+    local nQuant      := aCols[n, nAcolsQtd] as numeric
+
+    if nQuant >= 5 .and. !( cTES $ superGetMV("ES_ZTESQTD") )
+        lRetorno := .F.
+        fwAlertInfo("Para quantidades iguais ou superiores a 5, deve-se usar as TES específicas"+;
+            CRLF+"Consulte o setor financeiro", "ALERTA")
+    endif
+
+Return lRetorno

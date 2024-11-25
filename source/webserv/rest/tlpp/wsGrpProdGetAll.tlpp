@@ -1,0 +1,146 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+#Include "TopConn.ch"
+
+//Declaração da namespace
+Namespace usandoGetVarios
+
+//Constantes
+#Define CRLF Chr(13) + Chr(10)
+
+/*
+ßßßßßßßßßßßßßßßßßßßß  {Protheus.doc} WSGRPPRODGETUN  ßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Buscar TODOS os grupos de produto com paginacao          ßß
+ßß   @author      Renato Silva                                             ßß
+ßß   @since       26/03/2024                                               ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+@Get("wsGrpProdGetAll/get/todos/")
+User Function wsGrpProdGetAll()
+    Local jResponse := JsonObject():New() As Json
+    Local jPath                           As Json
+    Local cAliasWS  := 'SBM'              As Character
+    Local cQueryTab := ''                 As Character
+    Local nTamanho  := 10                 As Numeric
+    Local nTotal    := 0                  As Numeric
+    Local nPags     := 0                  As Numeric
+    Local nPagina   := 0                  As Numeric
+    Local nAtual    := 0                  As Numeric
+    Local jRegistro                       As Json
+
+    //Prepara o ambiente caso ele não esteja preparado
+    if Select("SX2") <= 0
+		RPCSetEnv('01','01', 'Administrador', '')
+    endif
+
+    //Busca os dados que o usuário informou
+    jPath := JsonObject():New()
+    jPath := oRest:getQueryRequest()
+
+    //Caso haja conteúdo
+    if jPath != Nil
+        //Gravando log de como que esta o jPath
+        //MemoWrite("\spool\jPath.html", VarInfo("jPath", jPath))
+
+        //Efetua a busca dos registros
+        cQueryTab := " SELECT " + CRLF
+        cQueryTab += "     TAB.R_E_C_N_O_ AS TABREC " + CRLF
+        cQueryTab += " FROM " + CRLF
+        cQueryTab += "     " + retSQLName(cAliasWS) + " TAB " + CRLF
+        cQueryTab += " WHERE " + CRLF
+        cQueryTab += "     TAB.D_E_L_E_T_ = '' " + CRLF
+        
+        //Se tem o código inicial
+        If ! Empty(jPath:getJsonObject('initId'))
+            cQueryTab += "     AND BM_GRUPO >= '" + jPath:getJsonObject('initId') + "' " + CRLF
+        EndIf
+
+        //Se tem o código final
+        If ! Empty(jPath:GetJsonObject('lastId'))
+            cQueryTab += "     AND BM_GRUPO <= '" + jPath:getJsonObject('lastId') + "' " + CRLF
+        EndIf
+
+        cQueryTab += " ORDER BY TABREC" + CRLF
+        TCQuery cQueryTab New Alias 'QRY_TAB'
+
+        //Se não encontrar registros
+        If QRY_TAB->(EoF())
+            oRest:setStatusCode(500)
+            jResponse['errorId']  := 'ALL002'
+            jResponse['error']    := 'Registro(s) não encontrado(s)'
+            jResponse['solution'] := 'A consulta de registros não retornou nenhuma informação'
+        Else
+            jResponse['objects'] := {}
+
+            //Conta o total de registros
+            Count To nTotal
+            QRY_TAB->( dbGoTop() )
+
+            //O tamanho do retorno, será o limit, se ele estiver definido
+            If ! Empty( jPath:getJsonObject('limit') )
+                nTamanho := Val( jPath:getJsonObject('limit') )
+            EndIf
+
+            //Pegando total de páginas
+            nPags := NoRound( nTotal / nTamanho, 0 )
+            nPags += Iif(nTotal % nTamanho != 0, 1, 0)
+            
+            //Se vier página
+            If ! Empty( jPath:GetJsonObject('page') )
+                nPagina := Val( jPath:GetJsonObject('page') )
+            EndIf
+
+            //Se a página vier zerada ou negativa ou for maior que o máximo, será 1 
+            If nPagina <= 0 .Or. nPagina > nPags
+                nPagina := 1
+            EndIf
+
+            //Se a página for diferente de 1, pula os registros
+            If nPagina != 1
+                QRY_TAB->( dbSkip((nPagina-1) * nTamanho) )
+            EndIf
+
+            //Adiciona os dados para a meta
+            jJsonMeta := JsonObject():New()
+            jJsonMeta['total']        := nTotal
+            jJsonMeta['current_page'] := nPagina
+            jJsonMeta['total_page']   := nPags
+            jJsonMeta['total_items']  := nTamanho
+            jResponse['meta']         := jJsonMeta
+
+            //Percorre os registros
+            While ! QRY_TAB->(EoF())
+                nAtual++
+                
+                //Se ultrapassar o limite, encerra o laço
+                If nAtual > nTamanho
+                    Exit
+                EndIf
+
+                //Posiciona o registro e adiciona no retorno
+                dbSelectArea( cAliasWS )
+                (cAliasWS)->( dbGoTo(QRY_TAB->TABREC) )
+                
+                jRegistro := JsonObject():New()
+                jRegistro['grupo']:= (cAliasWS)->BM_GRUPO 
+                jRegistro['desc'] := (cAliasWS)->BM_DESC 
+                aAdd(jResponse['objects'], jRegistro)
+
+                QRY_TAB->( dbSkip() )
+            EndDo
+        EndIf
+        QRY_TAB->( dbCloseArea() )
+  
+    //Do contrário, irá retornar uma mensagem que não foi encontrado
+    Else
+        oRest:setStatusCode(500)
+        jResponse['errorId']  := 'ALL001'
+        jResponse['error']    := 'Objeto vazio'
+        jResponse['solution'] := 'Falha ao executar, contate o Administrador'
+    EndIf
+  
+    //Encerra retornando o JSON
+    oRest:setKeyHeaderResponse('Content-Type','application/json')
+    oRest:setResponse( jResponse:toJSON() )
+Return

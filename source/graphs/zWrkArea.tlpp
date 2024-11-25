@@ -1,0 +1,99 @@
+﻿//Bibliotecas
+#INCLUDE "totvs.ch"
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} ZWRKAREA ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Painel de Graficos, utilizando a classe FWUIWorkArea              ßß
+ßß   @author      Renato Silva                                                      ßß
+ßß   @since       22/03/2024                                                        ßß
+ßß   @obs         Atualizacoes > Graficos e Paineis > WorkArea                      ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User function zWrkArea()
+
+    local aSize       := MsAdvSize(.F.)
+    local nLarg       := aSize[5]
+    local nAltu       := aSize[6]
+    local oDialog     as object
+    private oWorkArea as object
+    
+    oDialog := TDialog():New(0, 0, nAltu, nLarg, "Exemplo FWUIWorkArea",,,,,CLR_BLACK,CLR_WHITE,,,.T.)
+
+        oWorkArea := FWUIWorkArea():New(oDialog)
+        
+            oWorkArea:CreateHorizontalBox("SUPERIOR" , 30 , .F.)
+            oWorkArea:CreateHorizontalBox("INFERIOR" , 70 , .F.)
+            oWorkArea:SetBoxCols("SUPERIOR" , {"WIDGET1", "WIDGET2"} )
+            oWorkArea:SetBoxCols("INFERIOR" , {"WIDGET3", "WIDGET4"} )
+        
+        oWorkArea:Activate()
+
+        grafBar()
+        grafPizza()
+
+    oDialog:Activate()
+ 
+return NIL
+
+
+Static Function grafBar()
+
+    local oChart as object
+
+    oChart := FWChartFactory():New()
+    oChart:setOwner(oWorkArea:GetPanel("WIDGET1"))
+    oChart:addSerie('Apresentacao',   96 )
+    oChart:addSerie('Qualificacao',  100 )
+    oChart:addSerie('Fechamento'  ,   99 )
+    oChart:addSerie('Pos Venda'   ,   80 )
+    oChart:setPicture("@E 999,999,999.99")
+    oChart:setMask("R$ *@*")
+    oChart:setLegend(CONTROL_ALIGN_NONE)
+    oChart:setAlignSerieLabel(CONTROL_ALIGN_RIGHT)
+    oChart:EnableMenu(.F.)
+    oChart:setChartDefault(COLUMNCHART)
+    oChart:Activate()
+
+Return NIL
+
+
+Static Function grafPizza()
+
+    local oChart2 as object
+    local cTabFunc := GetNextAlias()
+
+    oChart2 := FWChartFactory():New()
+    oChart2:SetOwner(oWorkArea:GetPanel("WIDGET2"))
+
+    If ( SELECT(cTabFunc) ) > 0
+	    dbSelectArea(cAlias)
+		(cAlias)->(dbCloseArea())
+	EndIf
+
+    BeginSQL Alias cTabFunc
+        select distinct
+            (select count(RA_MAT) from %table:SRA% where RA_SEXO in ('M')) HOMENS,
+            (select count(RA_MAT) from %table:SRA% where RA_SEXO in ('F')) MULHERES
+        from %table:SRA% SRA
+    EndSQL
+
+    (cTabFunc)->(dbGoTop())
+
+    if (cTabFunc)->(!EOF())
+        while (cTabFunc)->(!EOF())
+            oChart2:addSerie('Homens'  , (cAlias)->(HOMENS)   )
+            oChart2:addSerie('Mulheres', (cAlias)->(MULHERES) )
+            (cTabFunc)->(dbSkip())
+        enddo
+    EndIf
+
+    //oChart2:setPicture("@E 999,999,999.99")
+    //oChart2:setMask("R$ *@*")
+    oChart2:SetLegend(CONTROL_ALIGN_LEFT)
+    oChart2:SetAlignSerieLabel(CONTROL_ALIGN_RIGHT)
+    oChart2:EnableMenu(.F.)
+    oChart2:SetChartDefault(PIECHART)
+    oChart2:Activate()
+
+Return NIL
+

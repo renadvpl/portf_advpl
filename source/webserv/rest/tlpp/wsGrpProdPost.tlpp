@@ -1,0 +1,114 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+
+//Declaração da namespace
+Namespace criandoRegistros
+
+//Constantes
+#Define CRLF Chr(13) + Chr(10)
+
+/*
+ßßßßßßßßßßßßßßßßßßßß  {Protheus.doc} WSGRPPRODPOST  ßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Incluir um grupo de produto conforme a estrutura         ßß
+ßß   @author      Renato Silva                                             ßß
+ßß   @since       26/03/2024                                               ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+  
+@Post("WsGrupoProdNov/inclui/unico/")
+User Function wsGrpProdPost()
+    Local jResponse         := JsonObject():New()     As Json
+    Local jBody                                       As Json
+    Local cAliasWS          := 'SBM'                  As Character
+    Local aDados            := {}                     As Array
+    Local nLinha            := 0                      As Numeric
+    Local cDirLog           := '\x_logs\'             As Character
+    Local cArqLog           := ''                     As Character
+    Local cErrorLog         := ''                     As Character
+    Local aLogAuto          := {}                     As Array
+    Local cBody             := oRest:getBodyRequest() As Character
+    Private lMsErroAuto     := .F.                    As Logical
+    Private lMsHelpAuto     := .T.                    As Logical
+    Private lAutoErrNoFile  := .T.                    As Logical
+
+    //Prepara o ambiente caso ele não esteja preparado
+    if Select("SX2") <= 0
+		RPCSetEnv('01','01', 'Administrador', '')
+    endif
+
+    //Se veio um body
+    If ! Empty(cBody)
+
+        //Busca os dados que o usuário informou
+        jBody := JsonObject():New()
+        jBody:fromJson(cBody)
+    
+        //Caso haja conteúdo
+        If jBody != Nil
+    
+            dbSelectArea( cAliasWS )
+            (cAliasWS)->( dbSetOrder(1) )
+
+            //Adiciona os dados do ExecAuto
+            If ! Empty(jBody:getJsonObject('grupo'))
+                aAdd(aDados, {'BM_GRUPO' , jBody:getJsonObject('grupo')  ,  Nil})
+            EndIf
+            If ! Empty(jBody:getJsonObject('desc'))
+                aAdd(aDados, {'BM_DESC'  , jBody:getJsonObject('desc')   ,  Nil})
+            EndIf
+            If ! Empty(jBody:getJsonObject('proori'))
+                aAdd(aDados, {'BM_PROORI', jBody:getJsonObject('proori') ,  Nil})
+            EndIf
+            If ! Empty(jBody:getJsonObject('status'))
+                aAdd(aDados, {'BM_STATUS', jBody:getJsonObject('status') ,  Nil})
+            EndIf
+
+            //Chama a exclusão automática
+            msExecAuto({|x, y| MATA035(x, y)}, aDados, 3)
+
+            //Se houve erro, gera um arquivo de log dentro do diretório da protheus data
+            If lMsErroAuto
+
+                //Monta o texto do Error Log que será salvo
+                cErrorLog   := ''
+                aLogAuto    := GetAutoGrLog()
+                For nLinha := 1 To Len(aLogAuto)
+                    cErrorLog += aLogAuto[nLinha] + CRLF
+                Next nLinha
+
+                //Se a pasta de Logs não existir, cria ela
+                If ! ExistDir(cDirLog)
+                    MakeDir(cDirLog)
+                EndIf
+
+                //Grava o arquivo de log
+                cArqLog := 'SBM_post_' + dToS(Date()) + '_' + StrTran(Time(), ':', '-') + '.log'
+                MemoWrite(cDirLog + cArqLog, cErrorLog)
+
+                //Define o retorno para o WebService
+                oRest:setStatusCode(500)
+                jResponse['errorId']  := 'NOV002'
+                jResponse['error']    := 'Erro na inclusao do registro'
+                jResponse['solution'] := 'Nao foi possivel incluir o registro, foi gerado um arquivo de log em ' + cDirLog + cArqLog + ' '
+            Else
+                jResponse['note']     := 'Registro incluido com sucesso'
+            EndIf
+        Else
+            oRest:setStatusCode(500)
+            jResponse['errorId']  := 'NOV003'
+            jResponse['error']    := 'Falha na conversao string para JSON'
+            jResponse['solution'] := 'Nao foi possivel capturar o Body e transformar em JSON, contate o Administrador'
+        EndIf
+    
+    Else
+        oRest:setStatusCode(500)
+        jResponse['errorId']  := 'NOV001'
+        jResponse['error']    := 'Body vazio'
+        jResponse['solution'] := 'Informe o Body da requisicao'
+    EndIf
+  
+    //Encerra retornando o JSON
+    oRest:setKeyHeaderResponse('Content-Type','application/json')
+    oRest:setResponse( jResponse:toJSON() )
+Return

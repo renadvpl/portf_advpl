@@ -1,0 +1,172 @@
+/* Bibliotecas de Funções */
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} FUR025M ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Relatório de Acidentes Por Período                                  ßß
+ßß   @author Renato Silva                                                             ßß
+ßß   @since 04/12/2023                                                                ßß
+ßß   @type function                                                                   ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function FUR025M()
+
+    Local aPergs    := {}
+    Local cTitPar   := "Acidentes por Período"
+	Private aResps  := {}
+    Private oSay    as OBJECT
+
+    aAdd(aPergs,{1, "Filial De"    ,Space(tamSx3("TNC_FILIAL")[1])	       , ,""            ,"XM0","", 0,.F.})
+    aAdd(aPergs,{1, "Filial Até"   ,Replicate('Z',tamSx3("TNC_FILIAL")[1]) , ,"NaoVazio()"  ,"XM0","", 0,.F.})
+    aAdd(aPergs,{1, "De Acidente"  ,Space(tamSx3("TNC_ACIDEN")[1])		   , ,""            ,"TNC","",25,.F.})
+    aAdd(aPergs,{1, "Até Acidente" ,Replicate('Z',tamSx3("TNC_ACIDEN")[1]) , ,"NaoVazio()"  ,"TNC","",25,.F.})
+    aAdd(aPergs,{1, "Período De"   ,FirstDate(Date())                      , ,   ".T.",  "",  ".T.",  46,.F.})
+    aAdd(aPergs,{1, "Período Até"  ,LastDate(Date())                       , ,   ".T.",  "",  ".T.",  46,.F.})
+
+    If Parambox(aPergs , cTitPar , aResps ,,,,,,,,.F.,.F.)
+        FwMsgRun(,{|oSay| GeraDados() },"Processando os acidentes","Aguarde o fim da execução...")
+    Endif
+
+Return NIL
+
+
+
+Static Function GERADADOS()
+
+    Local cTabAcid   := GetNextAlias()
+    Local cFilDe     := aResps[01]
+    Local cFilAte    := aResps[02]
+    Local cAcidDe    := aResps[03]
+    Local cAcidAte   := aResps[04]
+    Private dPeriDe  := aResps[05]
+    Private dPeriAte := aResps[06]
+    Private aDados   := {}
+
+
+    BeginSQL Alias cTabAcid
+        SELECT
+            TNC_FILIAL, TNC_ACIDEN, TNC_INDACI, TNC_DESACI, TNC_DTACID, TNC_NUMFIC, TM0_MAT   , TNC_NOMFIC,
+            TNC_CC    , TNC_CODFUN, TNC_TIPCAT, TNC_AFASTA, TNC_QTAFAS, TNC_DTULTI, TNC_INDLOC, TNC_CGCPRE,
+            TNC_CIDACI, TNC_ESTACI, TNC_CODLES, TNC_GRPCID, TNC_CODCID, TNC_DESLOG, TNC_NUMLOG, TNC_RECIBO
+        FROM
+            %table:TNC% TNC
+            INNER JOIN %table:TM0% TM0
+                on TNC.TNC_NUMFIC = TM0.TM0_NUMFIC
+                and TM0.%notdel%
+        WHERE
+            TNC.%notdel%
+            and TNC.TNC_FILIAL between %exp:cFilDe%  and %exp:cFilAte%
+            and TNC.TNC_ACIDEN between %exp:cAcidDe% and %exp:cAcidAte%
+            and TNC.TNC_DTACID between %exp:DtoS( dPeriDe )% and %exp:DtoS( dPeriAte )%
+        ORDER BY
+            TNC.TNC_FILIAL, TNC.TNC_ACIDEN, TNC.TNC_DTACID
+    EndSQL
+
+	(cTabAcid)->( dbGoTop() )
+
+    While !(cTabAcid)->(EoF())
+        (cTabAcid)->( aAdd(aDados,{;
+            TNC_FILIAL, TNC_ACIDEN, X3Combo("TNC_INDACI",TNC_INDACI), TNC_DESACI, StoD(TNC_DTACID),TNC_NUMFIC,;
+            TM0_MAT, TNC_NOMFIC, fDesc("CTT", TNC_CC, "CTT_DESC01") , fDesc("SRJ", TNC_CODFUN, "RJ_DESC"),;
+            X3Combo("TNC_TIPCAT", TNC_TIPCAT), X3Combo("TNC_AFASTA", TNC_AFASTA),TNC_QTAFAS, StoD(TNC_DTULTI),;
+            X3Combo("TNC_INDLOC", TNC_INDLOC), TNC_CGCPRE, TNC_CIDACI, TNC_ESTACI,;
+            fDesc("TOJ",TNC_CODLES,"TOJ_NOMLES"), TNC_GRPCID , fDesc("TLG", TNC_GRPCID, "TLG_DESCRI"),;
+            POSICIONE("CC2",1, FWxFilial('CC2')+TNC_ESTACI+TNC_CODCID,"CC2_MUN"),TNC_DESLOG, TNC_NUMLOG, TNC_RECIBO;
+        }))
+        (cTabAcid)->(dbSkip())
+    EndDo
+
+    (cTabAcid)->(dbCloseArea())
+
+    FWMsgRun(,{|oSay| GeraExcel(aDados,oSay)}, "Gerando a planilha com acidentes", "Aguarde o final do processamento")
+
+Return NIL
+
+
+
+Static Function GERAEXCEL( aDados, oSay )
+
+    Local oFWMSEx    := FWMsExcelEx():New()
+    Local oFWMSExApp as object
+    Local cPasta     := "Acidentes"
+    Local cPlanilha  := "ACIDENTES NO PERÍODO DE "+DtoC( dPeriDe )+" ATÉ "+DtoC( dPeriAte )
+    Local cArquivo   := GetTempPath()+'acidentes_'+MesAno(dPeriDe)+'.xml'
+    Local nCount     := 0
+
+    If Len(aDados) <= 0
+        FWAlertWarning("Não existem dados para os parâmetros informados.", "ATENÇÂO")
+    Else
+        If !ApOleClient("MSExcel")
+            FWAlertWarning("MS Excel não está instalado.", "Contate o setor de TI")
+            return
+        EndIf
+
+        oSay:SetText("Criando estrutura da planilha MS Excel")
+
+        oFWMSEx:AddWorkSheet(cPasta)
+            oFWMSEx:AddTable(cPasta,cPlanilha)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Filial"	                   , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Acidente"                  , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Tipo Acid.  "              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Desc. Acidente  "          , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Data Acidente"             , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Ficha Médica"              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Matrícula"                 , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Nome Completo"             , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Setor Func  "              , 1, 1) 
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Função Func   "            , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Tipo CAT    "              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Houve Afast."              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Dias Perd.  "              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Ult.Dia Trab"              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Ind. Local  "              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"CNPJ Prestador"            , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Cidade Acid."              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"UF"                        , 2, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Natureza da Lesao"         , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"C.I.D."                    , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Descr. CID   "             , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Cidade Estab."             , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Desc. Logr. "              , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Núm. Logr.   "             , 1, 1)
+                oFWMSEx:AddColumn(cPasta,cPlanilha,"Recibo eSocial CAT"        , 1, 1)
+
+                    oFWMSEx:SetCelBold(.T.)
+                    oFWMSEx:SetFont('Arial')
+                    oFWMSEx:SetFontSize(10)
+                    oFWMSEx:SetFrGeneralColor("#000000")
+                    oFWMSEx:SetBgGeneralColor("#FFFFFF")
+                    oFWMsEx:SetTitleFrColor("#FFFFFF")
+                    oFWMsEx:SetTitleBgColor("#000000")
+        
+            oSay:SetText("Adicionando os acidentes para a planilha.")
+
+            For nCount := 1 To Len(aDados)
+                oSay:SetText("Adicionando a linha "+cValToChar(nCount)+" de "+cValToChar(Len(aDados)))
+                oFWMSEx:AddRow(cPasta,cPlanilha,;
+                {;
+                    aDados[nCount, 1], aDados[nCount, 2], aDados[nCount, 3], aDados[nCount, 4], aDados[nCount, 5],;
+                    aDados[nCount, 6], aDados[nCount, 7], aDados[nCount, 8], aDados[nCount, 9], aDados[nCount,10],;
+                    aDados[nCount,11], aDados[nCount,12], aDados[nCount,13], aDados[nCount,14], aDados[nCount,15],;
+                    aDados[nCount,16], aDados[nCount,17], aDados[nCount,18], aDados[nCount,19], aDados[nCount,20],;
+                    aDados[nCount,21], aDados[nCount,22], aDados[nCount,23], aDados[nCount,24], aDados[nCount,25];
+                })
+            Next nCount
+
+
+            If !Empty(oFWMSEx:aWorkSheet)
+
+                oSay:SetText("Abrindo o arquivo gerado...")
+                oFWMSEx:Activate()
+                oFWMSEx:GetXMLFile(cArquivo)
+                
+                oFWMSExApp := MsExcel():New()
+                oFWMSExApp:WorkBooks:Open(cArquivo)
+                oFWMSExApp:SetVisible(.T.)
+                oFWMSExApp:Destroy()
+
+            Endif
+    Endif
+
+Return NIL

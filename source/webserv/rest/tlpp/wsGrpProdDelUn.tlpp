@@ -1,0 +1,105 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+
+//Declaração da namespace
+Namespace apagandoDados
+
+//Constantes
+#Define CRLF Chr(13) + Chr(10)
+
+/*
+ßßßßßßßßßßßßßßßßßßßß  {Protheus.doc} WSGRPPRODDELUN  ßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Apagar um grupo de produto pelo seu codigo               ßß
+ßß   @author      Renato Silva                                             ßß
+ßß   @since       26/03/2024                                               ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+  
+@Delete("WsGrupoProdNov/delete/unico/")
+User Function wsGrpProdDelUn()
+    Local jResponse         := JsonObject():New() As Json
+    Local jPath                                   As Json
+    Local cAliasWS          := 'SBM'              As Character
+    Local aDados            := {}                 As Array
+    Local nLinha            := 0                  As Numeric
+    Local cDirLog           := '\x_logs\'         As Character
+    Local cArqLog           := ''                 As Character
+    Local cErrorLog         := ''                 As Character
+    Local aLogAuto          := {}                 As Array
+    Private lMsErroAuto     := .F.                As Logical
+    Private lMsHelpAuto     := .T.                As Logical
+    Private lAutoErrNoFile  := .T.                As Logical
+
+    //Prepara o ambiente caso ele não esteja preparado
+    if Select("SX2") <= 0
+		RPCSetEnv('01','01', 'Administrador', '')
+    endif
+
+    //Busca os dados que o usuário informou
+    jPath := JsonObject():New()
+    jPath := oRest:getQueryRequest()
+  
+    //Caso haja conteúdo e não esteja vazio o ID
+    If jPath != Nil .And. ! Empty(jPath:getJsonObject('id'))
+  
+        dbSelectArea( cAliasWS )
+        (cAliasWS)->( dbSetOrder(1) )
+  
+        //Se não encontrar o registro
+        If ! (cAliasWS)->( msSeek( FWxFilial(cAliasWS) + jPath:getJsonObject('id') ) )
+            oRest:setStatusCode(500)
+            jResponse['errorId']  := 'DEL002'
+            jResponse['error']    := 'ID não encontrado'
+            jResponse['solution'] := 'Código ID não encontrado na tabela ' + cAliasWS + ', informe outro código'
+  
+        //Define o retorno
+        Else
+            //Adiciona os dados do ExecAuto
+            aAdd(aDados, {'BM_GRUPO', (cAliasWS)->BM_GRUPO , Nil})
+            aAdd(aDados, {'BM_DESC' , (cAliasWS)->BM_DESC  , Nil})
+
+            //Chama a exclusão automática
+            msExecAuto({|x, y| MATA035(x, y)}, aDados, 5)
+
+            //Se houve erro, gera um arquivo de log dentro do diretório da protheus data
+            If lMsErroAuto
+
+                //Monta o texto do Error Log que será salvo
+                cErrorLog   := ''
+                aLogAuto    := GetAutoGrLog()
+                For nLinha := 1 To Len(aLogAuto)
+                    cErrorLog += aLogAuto[nLinha] + CRLF
+                Next nLinha
+
+                //Se a pasta de Logs não existir, cria ela
+                If ! ExistDir(cDirLog)
+                    MakeDir(cDirLog)
+                EndIf
+
+                //Grava o arquivo de log
+                cArqLog := 'SBM_delete_' + DtoS(Date()) + '_' + StrTran(Time(), ':', '-') + '.log'
+                MemoWrite(cDirLog + cArqLog, cErrorLog)
+
+                //Define o retorno para o WebService
+                oRest:setStatusCode(500)
+                jResponse['errorId']  := 'DEL003'
+                jResponse['error']    := 'Erro na exclusão do registro'
+                jResponse['solution'] := 'Nao foi possivel excluir o registro, foi gerado um arquivo de log em ' + cDirLog + cArqLog + ' '
+            Else
+                jResponse['note']     := 'Registro excluido com sucesso'
+            EndIf
+        EndIf
+  
+    //Do contrário, irá retornar uma mensagem que não foi encontrado
+    Else
+        oRest:setStatusCode(500)
+        jResponse['errorId']  := 'DEL001'
+        jResponse['error']    := 'ID vazio'
+        jResponse['solution'] := 'Informe o ID'
+    EndIf
+  
+    //Encerra retornando o JSON
+    oRest:setKeyHeaderResponse('Content-Type','application/json')
+    oRest:setResponse( jResponse:toJSON() )
+Return

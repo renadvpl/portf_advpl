@@ -1,0 +1,59 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+
+//Declaração da namespace
+Namespace usandoGetComum
+
+/*
+ßßßßßßßßßßßßßßßßßßßß  {Protheus.doc} WSGRPPRODGETUN  ßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Buscar um grupo de produto pelo seu codigo               ßß
+ßß   @author      Renato Silva                                             ßß
+ßß   @since       23/08/2023                                               ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+  
+@Get("WsGrupoProdNov/get/unico/")
+User Function wsGrpProdGetUn()
+    local jResponse := JsonObject():New() As Json
+    local jPath                           As Json
+    local cAliasWS  := 'SBM'              As Character
+
+    //Prepara o ambiente caso ele não esteja preparado
+    if Select("SX2") <= 0
+		RPCSetEnv('01','01', 'Administrador', '')
+    endif
+
+    //Busca os dados que o usuário informou
+    jPath := JsonObject():New()
+    jPath := oRest:getQueryRequest()
+  
+    //Caso haja conteúdo e não esteja vazio o ID
+    If jPath != Nil .And. ! Empty(jPath:getJsonObject('id'))
+  
+        dbSelectArea(cAliasWS)
+        (cAliasWS)->( dbSetOrder(1) )
+  
+        //Se não encontrar o registro
+        If ! (cAliasWS)->(MsSeek(FWxFilial(cAliasWS) + jPath:GetJsonObject('id') ))
+            oRest:setStatusCode(500)
+            jResponse['errorId']  := 'ID002'
+            jResponse['error']    := 'ID não encontrado'
+            jResponse['solution'] := 'Código ID não encontrado na tabela ' + cAliasWS + ', informe outro código'
+        Else
+            jResponse['grupo'] := (cAliasWS)->BM_GRUPO 
+            jResponse['desc']  := (cAliasWS)->BM_DESC 
+        EndIf
+  
+    //Do contrário, irá retornar uma mensagem que não foi encontrado
+    Else
+        oRest:setStatusCode(500)
+        jResponse['errorId']  := 'ID001'
+        jResponse['error']    := 'ID vazio'
+        jResponse['solution'] := 'Informe o ID'
+    EndIf
+  
+    //Encerra retornando o JSON
+    oRest:setKeyHeaderResponse('Content-Type','application/json')
+    oRest:setResponse( jResponse:toJSON() )
+Return

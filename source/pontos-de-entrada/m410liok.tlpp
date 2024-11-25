@@ -1,0 +1,44 @@
+#INCLUDE 'protheus.ch'
+#INCLUDE 'tlpp-core.th'
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} M410LIOK ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Ponto de entrada para validar as linhas do Pedido de venda          ßß
+ßß                O intuito é não permitir quantidade maior que 10 para cada item.    ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       26/10/2020                                                          ßß
+ßß   @see         https://tdn.totvs.com/pages/releaseview.action?pageId=6784149       ßß
+ßß   @tables      SC5 : Cabeçalho do pedido de venda                                  ßß
+ßß                SC6 : Itens do pedido de venda                                      ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function M410LIOK () as logical
+    Local lRet           :=.T. as logical
+    Local nCount         := 0  as numeric
+    Local nContarIguais  := 0  as numeric
+
+    Local nPosQtdVenda   := aScan(aHeader, {|x| AllTrim(x[2]) == "C6_QTDVEN"} )
+    Local nQtdVenda      := aCols[n, nPosQtdVenda]
+
+    Local nPosCodProduto := aScan(aHeader, {|x| AllTrim(x[2]) == "C6_PRODUTO"} ) 
+    Local cCodProduto    := aCols[n, nPosCodProduto]
+
+    for nCount := 1 to Len(aCols)
+        if aCols[nCount, nPosCodProduto] = cCodProduto
+            nContarIguais++
+        endif
+    next nCount
+
+    if nContarIguais > 1
+        lRet := .F.
+        fwAlertInfo("Não é permitido a inclusão de produtos iguais no mesmo pedido!",;
+            "OPERAÇÃO NÃO PERMITIDA!")
+    else
+        if nQtdVenda > 10
+            lRet := .F.
+            fwAlertInfo("Não estamos permitindo mais de 10 unidades do mesmo item",;
+                "QUANTIDADE NÃO PERMITIDA")
+        endif
+    endif
+
+Return lRet

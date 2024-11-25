@@ -1,0 +1,63 @@
+//Bibliotecas
+#Include "TOTVS.ch"
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} MTA410T ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Ponto-de-Entrada para disparo após a gravação do pedido de venda    ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       25/08/2023                                                          ßß
+ßß   @see         https://tdn.totvs.com/display/public/PROT/MTA410T                   ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function MTA410T()
+    local aArea    := FWGetArea() as Array
+    local cCorpo   := "" as Character
+    local cAssunto := "" as Character
+    local cPara    := "" as Character
+    local nPosProd := GDFieldPos("C6_PRODUTO") as Numeric
+    local nPosDesc := GDFieldPos("C6_DESCRI") as Numeric
+    local nPosQtde := GDFieldPos("C6_QTDVEN") as Numeric
+    local nPosVlUn := GDFieldPos("C6_PRCVEN") as Numeric
+    local nPosVTot := GDFieldPos("C6_VALOR") as Numeric
+    local nAtual   := 0  as Numeric
+
+    //Se for uma inclusão ou cópia e o tipo do pedido for Normal
+    If (INCLUI .Or. FWIsInCallStack("a410PCopia")) .And. SC5->C5_TIPO == "N"
+        //Dispara uma mensagem de eMail
+        cCorpo := '<p>Olá.</p>'
+        cCorpo += '<p>Foi incluido um novo pedido de venda no sistema, abaixo as informações:</p>'
+        cCorpo += '<p><b>Pedido:</b> '             + SC5->C5_NUM + '</p>'
+        cCorpo += '<p><b>Cliente:</b> '            + SC5->C5_CLIENTE + SC5->C5_LOJACLI + ' (' + Alltrim(Posicione('SA1', 1, FWxFilial('SA1') + SC5->C5_CLIENTE + SC5->C5_LOJACLI, 'A1_NOME')) + ')</p>'
+        cCorpo += '<p><b>Vendedor:</b> '           + SC5->C5_VEND1 + ' (' + Alltrim(Posicione('SA3', 1, FWxFilial('SA3') + SC5->C5_VEND1, 'A3_NOME')) + ')</p>'
+        cCorpo += '<p><b>Condição Pagamento:</b> ' + SC5->C5_CONDPAG + ' (' + Alltrim(Posicione('SE4', 1, FWxFilial('SE4') + SC5->C5_CONDPAG, 'E4_DESCRI')) + ')</p>'
+        cCorpo += '<p><b>Itens:</b> </p>'
+        cCorpo += '<center>'
+        cCorpo += '<table>'
+        cCorpo += '<tr>'
+        cCorpo += '<td><b>Produto</b></td>'
+        cCorpo += '<td><b>Descrição</b></td>'
+        cCorpo += '<td><b>Qtde</b></td>'
+        cCorpo += '<td><b>Vlr. Unit.</b></td>'
+        cCorpo += '<td><b>Vlr. Total</b></td>'
+        cCorpo += '</tr>'
+        For nAtual := 1 To Len(aCols)
+            cCorpo += '<tr>'
+            cCorpo += '<td>' + aCols[nAtual][nPosProd] + '</td>'
+            cCorpo += '<td>' + aCols[nAtual][nPosDesc] + '</td>'
+            cCorpo += '<td>' + Transform(aCols[nAtual][nPosQtde], "@E 999,999.99") + '</td>'
+            cCorpo += '<td>' + Transform(aCols[nAtual][nPosVlUn], "@E 999,999.99") + '</td>'
+            cCorpo += '<td>' + Transform(aCols[nAtual][nPosVTot], "@E 999,999.99") + '</td>'
+            cCorpo += '</tr>'
+        Next
+        cCorpo += '</table>'
+        cCorpo += '</center>'
+        cCorpo += '<p>Mensagem disparada na data <em>' + dToC(Date()) + '</em> às <em>' +Time() + '</em>.</p>'
+
+        cAssunto := "Pedido #" + SC5->C5_NUM
+        cPara    := "renatomate@gmail.com"
+        GPEMail( cAssunto, cCorpo, cPara, nil, nil )
+    EndIf
+
+    FWRestArea(aArea)
+
+Return NIL

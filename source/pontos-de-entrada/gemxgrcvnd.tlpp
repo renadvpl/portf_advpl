@@ -1,0 +1,31 @@
+//Bibliotecas
+#Include "TOTVS.ch"
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} GEMXGRCVND ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Ponto-de-Entrada acionado durante a gravação dos dados no       ßß
+ßß                pedido de venda.                                                ßß
+ßß   @author      Renato Silva                                                    ßß
+ßß   @since       25/08/2022                                                      ßß
+ßß   @see         https://tdn.totvs.com/pages/releaseview.action?pageId=6784609   ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+User Function GEMXGRCVND()
+    local aArea   := FWGetArea() as Array
+    local cEstado := "" as Character
+    local cObsAux := "CLIENTE DE SP ! " as Character
+    
+    //Se for um pedido normal, busca a unidade federativa do cliente
+    if SC5->C5_TIPO == "N"
+        cEstado := Posicione('SA1', 1, FWxFilial('SA1') + SC5->C5_CLIENTE + SC5->C5_LOJACLI, "A1_EST")
+
+        //Se for a UF de São Paulo, incrementa a observação, caso não exista ainda
+        if cEstado == "SP" .and. ! cObsAux $ Upper(SC5->C5_MENNOTA)
+            SC5->C5_MENNOTA := cObsAux + SC5->C5_MENNOTA
+        endif
+    endif
+
+    FWRestArea( aArea )
+
+Return NIL

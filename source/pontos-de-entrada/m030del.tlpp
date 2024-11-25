@@ -1,0 +1,22 @@
+#INCLUDE 'Protheus.ch'
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} M030DEL ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Bloqueio de exclusão de clientes PJ (Ponto-de-Entrada)              ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       25/10/2020                                                          ßß
+ßß   @see         https://tdn.totvs.com/pages/releaseview.action?pageId=6784134       ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+User Function M030DEL()
+    local lRet  := .T.
+    local aArea := fwGetArea()
+
+    if SA1->A1_PESSOA = "J" 
+        lRet := .F.
+        fwAlertInfo("Não é possível excluir este cliente","PESSOA JURÍDICA")
+    endif
+
+    fwRestArea(aArea)
+
+Return lRet

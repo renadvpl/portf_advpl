@@ -1,0 +1,76 @@
+//Bibliotecas
+#Include "tlpp-core.th"
+#Include "tlpp-rest.th"
+
+//Declaração da namespace
+Namespace atualizacaoParcial
+
+//Constantes
+#Define CRLF Chr(13) + Chr(10)
+
+/*
+ßßßßßßßßßßßßßßßßßßß  {Protheus.doc} WSGRPPRODPATCH ßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Alterar um grupo de produto conforme a estrutura         ßß
+ßß   @author      Renato Silva                                             ßß
+ßß   @since       26/03/2024                                               ßß
+ßß   @obs         Uso do verbo PATCH (Nao recomendado)                     ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+@Patch("WsGrupoProdNov/atualizacao/parcial/unico/")
+User Function wsGrpProdPatch()
+    Local jResponse         := JsonObject():New()     As Json
+    Local jBody                                       As Json
+    Local cAliasWS          := 'SBM'                  As Character
+    Local cBody             := oRest:getBodyRequest() As Character
+
+    //Prepara o ambiente caso ele não esteja preparado
+    if Select("SX2") <= 0
+		RPCSetEnv('01','01', 'Administrador', '')
+    endif
+
+    If ! Empty(cBody)
+        jBody := JsonObject():New()
+        jBody:fromJson(cBody)
+    
+        If jBody != Nil .And. ! Empty(jBody:getJsonObject('grupo'))
+            dbSelectArea( cAliasWS )
+            (cAliasWS)->( dbSetOrder(1) )
+
+            If ! (cAliasWS)->( msSeek(FWxFilial(cAliasWS) + jBody:getJsonObject('grupo') ) )
+                oRest:setStatusCode(500)
+                jResponse['errorId']  := 'ALT004'
+                jResponse['error']    := 'Grupo nao encontrado'
+                jResponse['solution'] := 'Codigo do Grupo nao encontrado na tabela ' + cAliasWS + ', portanto nao pode ser alterado'
+            Else
+                RecLock("SBM", .F.)
+                    If ! Empty(jBody:GetJsonObject('proori'))
+                        SBM->BM_PROORI := jBody:getJsonObject('proori')
+                    EndIf
+
+                    If ! Empty(jBody:GetJsonObject('status'))
+                        SBM->BM_STATUS := jBody:getJsonObject('status')
+                    EndIf
+                SBM->(MsUnlock())
+                
+                jResponse['note'] := 'Registro alterado parcialmente com sucesso'
+            EndIf
+        Else
+            oRest:setStatusCode(500)
+            jResponse['errorId']  := 'ALT003'
+            jResponse['error']    := 'Falha na conversao string para JSON e ou codigo do grupo vazio'
+            jResponse['solution'] := 'Nao foi possivel capturar o Body e transformar em JSON, contate o Administrador ou o codigo do grupo informado esta vazio'
+        EndIf
+    
+    Else
+        oRest:setStatusCode(500)
+        jResponse['errorId']  := 'NOV001'
+        jResponse['error']    := 'Body vazio'
+        jResponse['solution'] := 'Informe o Body da requisicao'
+    EndIf
+  
+    //Encerra retornando o JSON
+    oRest:setKeyHeaderResponse('Content-Type','application/json')
+    oRest:setResponse( jResponse:toJSON() )
+
+Return NIL

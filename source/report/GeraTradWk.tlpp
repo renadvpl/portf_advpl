@@ -1,0 +1,228 @@
+// Biblioteca de Funções
+#include "protdef.ch"
+#include "protheus.ch"
+#include "rwmake.ch"
+#include "topconn.ch"
+#include "totvs.ch"
+
+// Constante
+#define PULA chr(13)+chr(10)
+
+/*##### {Protheus.doc} User Function GERATRADWK #########################################
+%%    @Func:  GeraTradDWk                                                              %%
+%%    @Autor: Renato Silva                                                             %%
+%%    @Data:  04/10/2022                                                               %%
+%%    @Desc:  Exportação de informações para o sistema TradingWorks.                   %%
+#######################################################################################*/
+
+
+User Function GeraTradWK()
+
+ 	Local aSays    := {}
+    Local aButtons := {}
+	Local cTitulo  := OemToAnsi("Exportação TRADING WORKS")
+    Local cPerg    := "TRADWK01"
+
+    Pergunte(cPerg, .F.)
+	aAdd(aSays,OemToAnsi("Este programa foi desenvolvido para extrair informações pertinentes"))
+	aAdd(aSays,OemToAnsi("para o sistema TradingWorks e serão salvas em um arquivo CSV."      ))
+
+    aAdd(aButtons, { 5,.T.,{|| Pergunte(cPerg,.T.)        }} )
+	aAdd(aButtons, { 1,.T.,{|| TratTradWk(), FechaBatch() }} )
+	aAdd(aButtons, { 2,.T.,{|| FechaBatch()               }} )
+
+	FormBatch(cTitulo, aSays, aButtons)
+
+Return NIL
+
+/*==========================================================================================================================*/
+
+
+Static function TratTradWk()
+
+	Local nCount := 0
+
+	Private cPath    := ""
+	Private cArq     := ""
+	Private cSituac  := ""
+	Private cCateg   := ""
+
+    // Diretório do arquivo de saída
+    cPath := AllTrim(MV_PAR09)
+    cPath += If(Right(cPath,1)=="\","","\")
+	
+    // Situação na Folha
+    For nCount:=1 to Len(MV_PAR05)
+	    cSituac += "'"+Subs(MV_PAR05,nCount,1)+"'"
+	    If ( nCount+1 ) <= Len(MV_PAR05)
+		    cSituac += "," 
+	    Endif
+    Next nCount   
+    cSituac	:= "%"+cSituac+"%"
+
+	// Categoria Trabalhista
+    For nCount:=1 to Len(MV_PAR06)
+	    cCateg += "'"+Subs(MV_PAR06,nCount,1)+"'"
+	    If ( nCount+1 ) <= Len(MV_PAR06)
+		    cCateg += "," 
+	    Endif
+    Next nCount   
+    cCateg := "%"+cCateg+"%"
+	
+	// Tratamento das informações de funcionarios
+	QueryFunc( cSituac, cCateg )
+
+return
+
+/*############################################################################################################################*/
+
+Static Function QueryFunc( cSit, cCat )
+
+    Local cNivAces  := "Colaborador"
+    Local cTpLic    := "Ponto"
+    Local cNum1     := "1"
+	Local cEmp      := Substr(SM0->M0_NOMECOM,9,40)
+    Local cCNPJ     := Transform(SM0->M0_CGC, "@R 999999999999-99")
+    Local cFeriad   := "Antecipação de Feriados - CHMSCS"
+    Local cImpar    := "0"
+
+	Private cQryFunc  := GetNextAlias()
+
+    BeginSQL Alias cQryFunc
+	    SELECT
+	        SRA.RA_MAT     Matricula,
+            SRA.RA_NOMECMP Nome,
+	        SRA.RA_NOME    NomeReduzido,
+			SRA.RA_EMAIL   Email,
+            SRA.RA_MAT     PIN,
+            %exp:cNivAces% NivelAcesso,
+            %exp:cTpLic%   TipoDeLicenca,
+            %exp:cNum1%    SomentePonto,
+            %exp:cNum1%    Situacao,
+            %exp:cNum1%    NecessarioMarcarPonto,
+            %exp:cNum1%    TipoColaborador,
+            CTT.CTT_DESC01 Departamento,
+            SRA.RA_CC      CentroCusto,
+            InitCap(%exp:cEmp%) Empregador,
+            %exp:cCNPJ%    EmpregaCNPJ,
+            SR6.R6_DESC    RegraPonto,
+            %exp:cFeriad%  Feriados,
+            %exp:cImpar%   PermiteImpar,
+            SRA.RA_NASC    DataNascImento,
+            SRA.RA_SEXO    Sexo,
+	        SRA.RA_TELEFON Telefone,
+	        SRA.RA_NUMCELU Celular,
+            SRJ.RJ_DESC    Cargo,
+            SRA.RA_CIC     CPF,
+	        SRA.RA_PIS     PIS,
+            SRA.RA_NUMCP   CTPS,
+            SRA.RA_SERCP   Serie,
+	        SRA.RA_ADMISSA DataAdmissao
+        FROM
+            %table:SRA% SRA
+            INNER JOIN %table:SR6% SR6
+                on SRA.RA_TNOTRAB=SR6.R6_TURNO
+				and SR6.%notdel%
+            INNER JOIN %table:SRJ% SRJ
+                on SRA.RA_CODFUNC=SRJ.RJ_FUNCAO
+				and SRJ.%notdel%
+			INNER JOIN %table:CTT% CTT
+                on SRA.RA_CC=CTT.CTT_CUSTO
+				and CTT.%notdel%
+        WHERE
+            SRA.%notdel%
+            and SRA.RA_FILIAL between %exp:MV_PAR01% and %exp:MV_PAR02%
+			and SRA.RA_MAT    between %exp:MV_PAR03% and %exp:MV_PAR04%
+			and SRA.RA_CC     between %exp:MV_PAR07% and %exp:MV_PAR08%
+			and SRA.RA_SITFOLH in (%exp:Upper(cSit)%)
+			and SRA.RA_CATFUNC in (%exp:Upper(cCat)%)
+			
+            ORDER BY 1
+	EndSQL
+
+	(cQryFunc)->(dbGoTop())
+
+	If (cQryFunc)->(!EoF())
+		txtTradWk()
+	Else
+		FWAlertInfo("Não há dados para geração do arquivo CSV.")
+	Endif
+
+return
+
+/*############################################################################################################################*/
+
+Static function txtTradWk()
+
+	Local cEmp := alltrim(SM0->M0_CODIGO) + alltrim(SM0->M0_CODFIL)
+	Local nLinha   := 0
+    Private cTexto := ""
+
+	dbSelectArea(cQryFunc)
+	(cQryFunc)->(dbGotop())
+
+	// CABEÇALHO DE COLUNAS (HEADER)
+	cTexto := "Matricula;Nome;NomeReduzido;Email;PIN;NivelAcesso;TipoDeLicenca;SomentePonto;Situacao;NecessarioMarcarPonto;"
+	cTexto += "TipoColaborador;Departamento;CentroCusto;Empregador;EmpregadorCNPJ;RegraPonto;Feriados;PermiteImpar;"
+	cTexto += "DataNascimento;Sexo;Telefone;Celular;Cargo;CPF;PIS;CTPS;Serie;DataAdmissao;" + PULA
+
+	// ITENS DA PLANILHA (DETAIL)
+	While (cQryFunc)->(!EOF())
+
+		cTexto += cValToChar( Val((cQryFunc)->Matricula ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Nome,1,60) ) + space( 60-len( alltrim( SubStr((cQryFunc)->Nome,1,60) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->NomeReduzido,1,30) ) + space( 30-len( alltrim( SubStr( (cQryFunc)->NomeReduzido,1,30) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Email,1,50) ) + space( 50-len( alltrim( SubStr( (cQryFunc)->Email,1,50) ) ) ) + ";"
+		cTexto += cValToChar( Val((cQryFunc)->PIN ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->NivelAcesso,1,11) ) + space( 11-len( alltrim( SubStr( (cQryFunc)->NivelAcesso,1,11) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->TipoDeLicenca,1,13) ) + space( 13-len( alltrim( SubStr( (cQryFunc)->TipoDeLicenca,1,13) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->SomentePonto,1,11) ) + space( 11-len( alltrim( SubStr( (cQryFunc)->SomentePonto,1,11) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Situacao,1,8) ) + space( 8-len( alltrim( SubStr( (cQryFunc)->Situacao,1,8) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->NecessarioMarcarPonto,1,21) ) + space( 21-len( alltrim( SubStr( (cQryFunc)->NecessarioMarcarPonto,1,21) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->TipoColaborador,1,15) ) + space( 15-len( alltrim( SubStr( (cQryFunc)->TipoColaborador,1,15) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Departamento,1,40) ) + space( 40-len( alltrim( SubStr( (cQryFunc)->Departamento,1,40) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->CentroCusto,1,11) ) + space( 11-len( alltrim( SubStr( (cQryFunc)->CentroCusto,1,11) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Empregador,1,40) ) + space( 40-len( alltrim( SubStr( (cQryFunc)->Empregador,1,40) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->EmpregaCNPJ,1,15) ) + space( 15-len( alltrim( SubStr( (cQryFunc)->EmpregaCNPJ,1,15) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->RegraPonto,1,30) ) + space( 30-len( alltrim( SubStr( (cQryFunc)->RegraPonto,1,30) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Feriados,1,32) ) + space( 32-len( alltrim( SubStr( (cQryFunc)->Feriados,1,32) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->PermiteImpar,1,11) ) + space( 11-len( alltrim( SubStr( (cQryFunc)->Feriados,1,11) ) ) ) + ";"
+		cTexto += Substr((cQryFunc)->DataNascimento,7,2) + "/" + substr((cQryFunc)->DataNascimento,5,2) + "/" + substr((cQryFunc)->DataNascimento,3,2) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Sexo,1,8) ) + space( 8-len( alltrim( SubStr( (cQryFunc)->Sexo,1,8) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Telefone,1,11) ) + space( 11-len( alltrim( SubStr( (cQryFunc)->Telefone,1,11) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Celular,1,11) ) + space( 11-len( alltrim( SubStr( (cQryFunc)->Celular,1,11) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Cargo,1,30) ) + space( 30-len( alltrim( SubStr( (cQryFunc)->Cargo,1,30) ) ) ) + ";"
+		cTexto += StrZero(Val((cQryFunc)->CPF),11) + ";"//+ space( 11-len( alltrim( SubStr( (cQryFunc)->CPF,1,11) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->PIS,1,14) ) + space( 14-len( alltrim( SubStr( (cQryFunc)->PIS,1,14) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->CTPS,1,9) ) + space( 9-len( alltrim( SubStr( (cQryFunc)->CTPS,1,9) ) ) ) + ";"
+		cTexto += alltrim( SubStr((cQryFunc)->Serie,1,7) ) + space( 7-len( alltrim( SubStr( (cQryFunc)->Serie,1,7) ) ) ) + ";"
+		cTexto += Substr((cQryFunc)->DataAdmissao,7,2) + "/" + substr((cQryFunc)->DataAdmissao,5,2) + "/" + substr((cQryFunc)->DataAdmissao,3,2) + ";" + PULA
+
+		nLinha++
+		(cQryFunc)->(dbSkip())
+
+	EndDo
+
+	//Gera arquivo CSV
+	If !Empty(cTexto)
+
+		//Descrição do arquivo CSV
+		cArqLog := Upper(cEmp)+"-"
+		cArqLog += "funcionarios-"
+		cArqLog += DtoS(MSDate()) 
+
+		//Salva o arquivo CSV no diretório
+		MemoWrite(cPath + cArqLog + ".csv", cTexto)
+
+	Else
+		FWAlertInfo("Não há dados para geração do arquivo CSV.")
+	Endif
+
+	If ChkFile(cQryFunc)
+		(cQryFunc)->(dbCloseArea())
+	Endif
+
+	FWAlertSuccess("Verifique o arquivo foi gerado no diretório informado.","PROCESSO FINALIZADO")
+
+return
+

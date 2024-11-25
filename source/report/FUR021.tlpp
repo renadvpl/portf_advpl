@@ -1,0 +1,165 @@
+/* Biblioteca de Includes */
+#include 'protheus.ch'
+#include 'topconn.ch'
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß  {Protheus.doc} FUR021  ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+ßß   @description Extração de arquivo TXT dos lançtos pagos dos empréstimos consig. - Padrão ZetraSoft ßß
+ßß   @author Renato Silva                                                                              ßß
+ßß   @since 23/08/2023                                                                                 ßß
+ßß   @version 1.0                                                                                      ßß
+ßß   @type function                                                                                    ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßß
+*/
+
+User Function FUR021()
+
+	Local cTitulo  := OemToAnsi("Exportação ZETRA - Empréstimos Consignados")
+    Private aResps := {}
+    Private aPergs := {}
+
+    aAdd(aPergs,{1,"Filial De:"          ,Space(TamSX3("RA_FILIAL")[1])	        ,  ,""            ,"XM0","",0,.F.})
+    aAdd(aPergs,{1,"Filial Até:"         ,Replicate('Z',TamSX3("RA_FILIAL")[1])	,  ,"NaoVazio()"  ,"XM0","",0,.F.})
+    aAdd(aPergs,{1,"Matrícula De:"       ,Space(TamSX3("RA_MAT")[1])		    ,  ,""            ,"SRA","",0,.F.})
+    aAdd(aPergs,{1,"Matrícula Até:"      ,Replicate('Z',TamSX3("RA_MAT")[1])	,  ,"NaoVazio()"  ,"SRA","",0,.F.})
+    aAdd(aPergs,{1,"Situações de Folha:" ," ADFT"	  					        ,  ,"fSituacao()" ,"","",6,.F.})
+    aAdd(aPergs,{1,"Categorias"          ,"ACDEGHIJMPST*"	  					,  ,"fCategoria()","","",55,.F.})
+    aAdd(aPergs,{1,"Competência:"        ,'202301'		                        ,  ,"NaoVazio()"  ,"","",0,.F.})
+    aAdd(aPergs,{1,"Salvar arquivo em :" ,"C:\Export\"                          ,  ,"NaoVazio()"  ,"","",70,.F.})
+
+
+    if ParamBox( aPergs , cTitulo , aResps ,,,,,,,, .T. , .T. )
+        FWMsgRun( , {|oSay| GeraRegs() }, "Processando os dados" , "Aguarde o fim da execução..." )
+    endif
+
+
+Return NIL
+
+
+
+Static function GeraRegs()
+
+	Private cPath    := ""
+	Private cArq     := ""
+    
+	Private cSituac  := aResps[5]
+	Private cCateg   := aResps[6]
+
+    // Diretório do arquivo de saída
+    cPath := AllTrim( aResps[8] )
+    cPath += If( Right( cPath , 1 )=="\","","\" )
+	
+    // Tratamento para as Situações e Categorias
+    cSituac := "%" + fSqlIN( cSituac, 1 ) + "%"
+    cCateg  := "%" + fSqlIN( cCateg , 1 ) + "%"
+	
+	// Tratamento das informações de funcionarios
+	QryFunc( cSituac, cCateg )
+
+Return NIL
+
+
+
+Static Function QryFunc( cSit, cCat )
+
+    Local cFilDe  := aResps[1]
+    Local cFilAt  := aResps[2]
+    Local cMatDe  := aResps[3]
+    Local cMatAt  := aResps[4]
+    Local cCompet := aResps[7]
+    Local nI      := 0
+    Local cVerbas := AllTrim(fTabela("U00Z",1,5))
+    Local cVbCons := ""
+    
+    // Extração dos códigos das verbas na Manutenção de Tabelas - U00Z
+    cVbCons := "'"
+    For nI := 1 To Len(cVerbas) Step 4
+        cVbCons += Subs(cVerbas,nI,3) + "','"
+    Next nI
+    cVbCons += "'"
+    cVbCons := "%"+ cVbCons +"%"
+
+	Private cQryFunc  := GetNextAlias()
+
+    BeginSQL Alias cQryFunc
+
+        SELECT
+            RD_MAT         Matric,
+            RA_CIC         CPF,
+            RA_NOME        Nome,
+            RD_PD          Verba,
+            RD_VALOR       Valor,
+            RD_DATARQ      Periodo
+        FROM
+            %table:SRD% SRD
+            INNER JOIN %table:SRA% SRA
+                on SRD.RD_FILIAL = SRA.RA_FILIAL
+                and SRD.RD_MAT = SRA.RA_MAT
+        WHERE
+            SRA.%notdel%
+            and SRD.%notdel%
+            and SRD.RD_FILIAL  between %exp:cFilDe% and %exp:cFilAt%
+            and SRD.RD_MAT     between %exp:cMatDe% and %exp:cMatAt%
+            and SRD.RD_PD      in (%exp:cVbCons%)
+            and SRD.RD_DATARQ  in %exp:cCompet%
+            and SRA.RA_SITFOLH in (%exp:Upper(cSit)%)
+            and SRA.RA_CATFUNC in (%exp:Upper(cCat)%)
+            
+        ORDER BY 1 , 6
+        
+	EndSQL
+    
+	(cQryFunc)->(dbGoTop())
+
+	If (cQryFunc)->(!EoF())
+		GeraTXT()
+	Else
+		FWAlertInfo("Não há dados para geração do arquivo TXT bancário.")
+	Endif
+
+Return NIL
+
+
+
+Static function GeraTXT()
+
+    Local cPerTXT := Substr( aResps[7],5,6 ) + Substr( aResps[7],1,4 )
+    Private cTexto := ""
+
+	dbSelectArea(cQryFunc)
+	(cQryFunc)->(dbGotop())
+
+    // Conteúdo do arquivo TXT
+	While (cQryFunc)->(!EOF())
+
+    	cTexto += StrZero( Val(AllTrim((cQryFunc)->Matric)) , 10 )
+        cTexto += AllTrim( (cQryFunc)->CPF )
+        cTexto += PadR( AllTrim((cQryFunc)->Nome) , 50 )
+        cTexto += '001'
+        cTexto += SM0->M0_CGC
+        cTexto += StrZero( Val(AllTrim((cQryFunc)->Verba)) , 4 )
+        cTexto += "0"+Strtran( Transform( (cQryFunc)->Valor , "@R 999999.99")," ","0" )
+        cTexto += "0"+Strtran( Transform( (cQryFunc)->Valor , "@R 999999.99")," ","0" )
+        cTexto += Space(100)
+        cTexto += "T"
+        cTexto += cPerTXT + CRLF
+        
+        (cQryFunc)->(dbSkip())
+
+	EndDo
+
+	//Geração do arquivo TXT
+	If !Empty(cTexto)
+		cArqLog := SM0->M0_CGC + "_" + cPerTXT
+		MemoWrite(cPath + cArqLog + ".txt", cTexto)
+	Else
+		FWAlertInfo("Não há dados para geração do arquivo TXT.")
+	Endif
+
+	If ChkFile(cQryFunc)
+		(cQryFunc)->(dbCloseArea())
+	Endif
+
+	FWAlertSuccess("Verifique o arquivo foi gerado no diretório informado.","PROCESSO FINALIZADO")
+
+Return NIL

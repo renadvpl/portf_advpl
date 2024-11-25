@@ -1,0 +1,20 @@
+#include "protheus.ch"
+
+/*/{Protheus.doc} User Function SEGJOB
+    Segundo Job
+    @type Function
+    @author Renato
+    @since 23/06/2021
+    @version 1.0
+    /*/
+User Function JobCalc(cPar1,cPar2)
+
+    Local nPar1 := Val(cPar1) // Converter de caracter para numero
+    Local nPar2 := Val(cPar2)
+
+    FWLogMsg("INFO",,"JOBCALC",,,,"Soma............->"+cValToChar(nPar1+nPar2),,,) // Podemos utilizar ConOut
+    FWLogMsg("INFO",,"JOBCALC",,,,"Subtracao.......->"+cValToChar(nPar1-nPar2),,,)
+    FWLogMsg("INFO",,"JOBCALC",,,,"Multiplicacao...->"+cValToChar(nPar1*nPar2),,,)
+    FWLogMsg("INFO",,"JOBCALC",,,,"Divisao.........->"+cValToChar(nPar1/nPar2),,,)
+    
+Return

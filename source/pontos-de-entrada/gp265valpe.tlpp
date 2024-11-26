@@ -1,0 +1,130 @@
+/* Biblioteca de Funções */
+#include "protheus.ch"
+#include "topconn.ch"
+
+/*
+ßßßßßßßßßßßßßßßßßßßßßßßßßßß {Protheus.doc} GP265VALPE ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßª
+ßß   @description Responsavel para disparo de e-mail no Desligamento de Autonomos     ßß
+ßß   @author      Renato Silva                                                        ßß
+ßß   @since       21/11/2023                                                          ßß
+ßß   @obs         Ponto-de-Entrada para validacao do Cadastro de Autonomos (GPEA265)  ßß
+ßß   @see         https://tdn.totvs.com/pages/releaseview.action?pageId=6079125       ßß
+ßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßßª
+*/
+
+User Function GP265VALPE() as Logical
+    local lSemVinc  as Logical
+    local lDemitido as Logical
+    local lRet      as Logical
+
+    lSemVinc  := iif(SRA->RA_CATFUNC $ 'A*P',.T.,.F.)
+    lDemitido := iif( !empty(M->RA_DEMISSA) .and. M->RA_SITFOLH = 'D',.T.,.F. )
+	lRet      := .T.
+
+    If lDemitido .and. lSemVinc
+        fEnvMail()
+    EndIf
+
+Return lRet
+
+
+Static Function fEnvMail()
+
+	Local cFrom 	:= GetMV("MV_RELFROM")
+	Local cMailTo	:= ""
+	Local cMailCC	:= ""
+	Local cSubject  := "AUTONOMO DEMITIDO"
+	Local cBody		:= ""
+	Local cFile		:= ""
+
+    dbSelectArea('SAN')
+	dbSetOrder(3)
+	
+	While SAN->(!EOF())
+        If SAN->AN_EVENTO $ '017'
+		    cMailTo += alltrim( SAN->AN_EMAIL ) + ';'
+		Endif
+		SAN->( dbSkip() )
+	EndDo
+
+	cInfos := '  <tr> ' + CRLF
+	cInfos += '	 <td colspan="4"><b>FUNCIONÁRIO</b><br><b>' + SRA->RA_MAT + ":</b> " + alltrim(SRA->RA_NOMECMP) +'</td> ' + CRLF
+	cInfos += '  </tr> ' + CRLF
+	cInfos += '  <br /> ' + CRLF
+
+	cInfos += '  <tr> ' + CRLF
+	cInfos += '	 <td colspan="4"><b>DEPARTAMENTO</b><br><b>' + SRA->RA_CC + ":</b> " + alltrim(CTT->CTT_DESC01) +'</td> ' + CRLF
+	cInfos += '  </tr> ' + CRLF
+	cInfos += '  <br /> ' + CRLF
+
+	cInfos += '  <tr> ' + CRLF
+	cInfos += '	 <td colspan="4"><b>CARGO</b><br><b>' + SRA->RA_CODFUNC + ":</b> " + alltrim(SRJ->RJ_DESC) +'</td> ' + CRLF
+	cInfos += '  </tr> ' + CRLF
+	cInfos += '  <br /> ' + CRLF
+
+	//----------------------------
+	// Montagem do corpo do email
+	//----------------------------
+	cBody := '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"> ' + CRLF
+	cBody += '<html xmlns="http://www.w3.org/1999/xhtml"> ' + CRLF
+	cBody += '<head> ' + CRLF
+	cBody += '<title>Protheus - ' + alltrim(UPPER(SM0->M0_NOME)) + ' - ' + cSubject + '</title> ' + CRLF
+	cBody += '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /> ' + CRLF
+	cBody += '<style type="text/css"> ' + CRLF
+	cBody += '    body {font-family:Arial, Helvetica, sans-serif; font-size:12px;} ' + CRLF
+	cBody += '    table.tblGrid1 {background-color:#FFF; margin:0; border:solid 1px #ccc; border-collapse:collapse; width:650px; height:80px;} ' + CRLF
+	cBody += '    table.tblGrid1 th {background-color:#FFF; color:#000; font-weight:bold; font-size:14px; border:solid 1px #999; text-align:center; height:30px} ' + CRLF
+	cBody += '    table.tblGrid1 td {vertical-align:middle; border:solid 1px #999; text-align:center; height:20px} ' + CRLF
+	cBody += '    table.tblGrid1 td, table.tblGrid th {padding:3px;} ' + CRLF
+	cBody += '    table.tblGrid2 {background-color:#FFF; margin:0; border:solid 1px #ccc; border-collapse:collapse; width:650px;} ' + CRLF
+	cBody += '    table.tblGrid2 th {background-color:#b2d0df; color:#000; font-weight:bold; font-size:14px; border:solid 1px #999; text-align:center; height:30px} ' + CRLF
+	cBody += '    table.tblGrid2 td {vertical-align:middle; border:solid 1px #999; text-align:left; height:20px} ' + CRLF
+	cBody += '    table.tblGrid2 td, table.tblGrid th {padding:3px;} ' + CRLF
+	cBody += '    table.tblGrid2 tr:hover, table.tblGrid tr.cinza:hover {background-color:#FFC; cursor:default;} ' + CRLF
+	cBody += '</style> ' + CRLF
+	cBody += '</head> ' + CRLF
+	cBody += '<body> ' + CRLF
+	cBody += '<div> ' + CRLF
+	cBody += '<table class="tblGrid1"> ' + CRLF
+	cBody += '  <tr> ' + CRLF
+	cBody += '      <th><img src="http://fuabc.org.br/wp-content/uploads/2014/10/logo01.jpg" width="89" height="60" /></th> ' + CRLF
+	cBody += '      <th>' + cSubject + '<br /> ' + CRLF
+	cBody += '      ' + alltrim(POSICIONE("SM0",1,CNUMEMP,"M0_NOME")) + " / " + alltrim(POSICIONE("SM0",1,CNUMEMP,"M0_FILIAL")) + '</th> ' + CRLF
+	cBody += '      <th><img src="http://fuabc.org.br/wp-content/uploads/2014/10/logo01.jpg" width="89" height="60" /></th> ' + CRLF
+	cBody += '  </tr> ' + CRLF
+	cBody += '</table> ' + CRLF
+
+	cBody += '  <table class="tblGrid2"> ' + CRLF
+	cBody += '    <tr> ' + CRLF
+	cBody += '      <th>INFORMAÇÕES</th> ' + CRLF
+	cBody += '    </tr> ' + CRLF
+	cBody += '  </table> ' + CRLF
+
+	cBody += '  <table class="tblGrid2">   ' + CRLF
+	cBody += '	<tr> ' + CRLF
+	cBody += '      <td><b>EMP</b><BR>' + cNumEmp + '</td> ' + CRLF
+	cBody += '	  <td colspan="3"><b>EMPRESA</b><BR>' + alltrim(POSICIONE("SM0",1,CNUMEMP,"M0_NOME")) + " / " + POSICIONE("SM0",1,CNUMEMP,"M0_FILIAL")+'</td> ' + CRLF
+	cBody += '	</tr> ' + CRLF
+	cBody += '  <br /> ' + CRLF
+
+	cBody += cInfos
+
+	cBody += '  <tr> ' + CRLF
+	cBody += '	  <td colspan="4"><b>USUÁRIO</b><br>' + alltrim(upper(cUserName)) + '</td> ' + CRLF
+	cBody += '  </tr> ' + CRLF
+	cBody += '  <br /> ' + CRLF
+	cBody += '</table> ' + CRLF
+	cBody += '<br/> ' + CRLF
+	cBody += '  <table class="tblGrid2"> ' + CRLF
+	cBody += '    <tr> ' + CRLF
+	cBody += '      <td><b>FUABC - Mensagem automática, por favor não responder este e-mail.</b></td> ' + CRLF
+	cBody += '    </tr> ' + CRLF
+	cBody += '  </table> ' + CRLF
+	cBody += '<br /> ' + CRLF
+	cBody += '</div> ' + CRLF
+	cBody += '</body> ' + CRLF
+	cBody += '</html> ' + CRLF
+
+	u_envMail(cFrom, cMailTo, cMailCC, cSubject, cBody, cFile)
+
+Return NIL

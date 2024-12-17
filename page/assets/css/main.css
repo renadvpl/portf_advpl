@@ -2137,7 +2137,7 @@ input, select, textarea {
 
 			.image.avatar img {
 				border-radius: 2%;
-				width: 200%;
+				width: 18rem;
 			}
 
 /* List */
@@ -3054,7 +3054,7 @@ input, select, textarea {
 				left: auto;
 				padding: 6em 4em;
 				position: relative;
-				text-align: center;
+				text-align: justify;
 				top: auto;
 				width: 100%;
 				display: block;
